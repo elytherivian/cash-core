@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: cash
+      POSTGRES_USER: cash
+      POSTGRES_PASSWORD: cash
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cash -d cash"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    profiles: ["app"]
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: local
+      APP_NAME: cash
+      APP_VERSION: local
+      CONFIG_FILE: ""
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cash
+      DB_USER: cash
+      DB_PASSWORD: cash
+      DB_SSLMODE: disable
+      LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    profiles: ["tools"]
+    image: migrate/migrate:v4.19.1
+    entrypoint: ["migrate"]
+    volumes:
+      - ../migrations:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

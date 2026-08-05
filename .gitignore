@@ -1,0 +1,22 @@
+# Binaries and build artifacts
+/bin/
+/dist/
+*.out
+*.test
+coverage.out
+coverage.html
+
+# Local configuration
+.env
+.env.*
+!.env.example
+/configs/config.yaml
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+
+# Runtime data
+/tmp/
+*.log
