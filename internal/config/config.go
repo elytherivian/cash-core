@@ -11,32 +11,30 @@ import (
 	"time"
 
 	_ "time/tzdata"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	App      App      `yaml:"app"`
-	HTTP     HTTP     `yaml:"http"`
-	Database Database `yaml:"database"`
-	Log      Log      `yaml:"log"`
+	App      App
+	HTTP     HTTP
+	Database Database
+	Log      Log
 }
 
 type App struct {
-	Environment string `yaml:"environment"`
-	Name        string `yaml:"name"`
-	Version     string `yaml:"version"`
+	Environment string
+	Name        string
+	Version     string
 }
 
 type HTTP struct {
-	Host              string        `yaml:"host"`
-	Port              int           `yaml:"port"`
-	ReadTimeout       time.Duration `yaml:"read_timeout"`
-	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"`
-	WriteTimeout      time.Duration `yaml:"write_timeout"`
-	IdleTimeout       time.Duration `yaml:"idle_timeout"`
-	ShutdownTimeout   time.Duration `yaml:"shutdown_timeout"`
-	AllowedOrigins    []string      `yaml:"allowed_origins"`
+	Host              string
+	Port              int
+	ReadTimeout       time.Duration
+	ReadHeaderTimeout time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	ShutdownTimeout   time.Duration
+	AllowedOrigins    []string
 }
 
 func (c HTTP) Address() string {
@@ -44,17 +42,17 @@ func (c HTTP) Address() string {
 }
 
 type Database struct {
-	Host            string        `yaml:"host"`
-	Port            int           `yaml:"port"`
-	Name            string        `yaml:"name"`
-	User            string        `yaml:"user"`
-	Password        string        `yaml:"password"`
-	SSLMode         string        `yaml:"ssl_mode"`
-	MaxOpenConns    int           `yaml:"max_open_conns"`
-	MaxIdleConns    int           `yaml:"max_idle_conns"`
-	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
-	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time"`
-	ConnectTimeout  time.Duration `yaml:"connect_timeout"`
+	Host            string
+	Port            int
+	Name            string
+	User            string
+	Password        string
+	SSLMode         string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
+	ConnectTimeout  time.Duration
 }
 
 func (c Database) DSN() string {
@@ -72,27 +70,26 @@ func (c Database) DSN() string {
 }
 
 type Log struct {
-	Level    string `yaml:"level"`
-	Format   string `yaml:"format"`
-	TimeZone string `yaml:"timezone"`
+	Level    string
+	Format   string
+	TimeZone string
 }
 
 func Load() (Config, error) {
+	// 获取默认 Config 对象
 	cfg := defaults()
-	path := env("CONFIG_FILE", "configs/config.yaml")
-	if err := loadYAML(path, &cfg); err != nil {
-		return Config{}, err
-	}
-
+	// 读取 env 环境变量 并校验
 	var loadErrors []error
 	applyEnvironment(&cfg, &loadErrors)
 	loadErrors = append(loadErrors, cfg.Validate())
+	// errors.Join 使用换行符拼接 errors
 	if err := errors.Join(loadErrors...); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
 }
 
+// defaults 返回默认 Config 对象
 func defaults() Config {
 	return Config{
 		App: App{Environment: "local", Name: "cash", Version: "dev"},
@@ -109,23 +106,6 @@ func defaults() Config {
 		},
 		Log: Log{Level: "info", Format: "json", TimeZone: "Asia/Shanghai"},
 	}
-}
-
-func loadYAML(path string, cfg *Config) error {
-	if path == "" {
-		return nil
-	}
-	content, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("read config file %s: %w", path, err)
-	}
-	if err := yaml.Unmarshal(content, cfg); err != nil {
-		return fmt.Errorf("decode config file %s: %w", path, err)
-	}
-	return nil
 }
 
 func applyEnvironment(cfg *Config, loadErrors *[]error) {
@@ -182,6 +162,8 @@ func (c Config) Validate() error {
 	return errors.Join(validationErrors...)
 }
 
+// env 从系统环境变量中查找 key value
+// 没有则返回默认值 fallback
 func env(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
