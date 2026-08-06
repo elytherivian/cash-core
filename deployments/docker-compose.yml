@@ -35,6 +35,7 @@ services:
       DB_PASSWORD: cash
       DB_SSLMODE: disable
       LOG_FORMAT: json
+      LOG_TIMEZONE: Asia/Shanghai
     ports:
       - "8080:8080"
     depends_on:

@@ -30,3 +30,4 @@ database:
 log:
   level: debug
   format: text
+  timezone: Asia/Shanghai

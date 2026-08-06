@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	_ "time/tzdata"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -70,8 +72,9 @@ func (c Database) DSN() string {
 }
 
 type Log struct {
-	Level  string `yaml:"level"`
-	Format string `yaml:"format"`
+	Level    string `yaml:"level"`
+	Format   string `yaml:"format"`
+	TimeZone string `yaml:"timezone"`
 }
 
 func Load() (Config, error) {
@@ -104,7 +107,7 @@ func defaults() Config {
 			SSLMode: "disable", MaxOpenConns: 20, MaxIdleConns: 5,
 			ConnMaxLifetime: time.Hour, ConnMaxIdleTime: 30 * time.Minute, ConnectTimeout: 5 * time.Second,
 		},
-		Log: Log{Level: "info", Format: "json"},
+		Log: Log{Level: "info", Format: "json", TimeZone: "Asia/Shanghai"},
 	}
 }
 
@@ -150,6 +153,7 @@ func applyEnvironment(cfg *Config, loadErrors *[]error) {
 	cfg.Database.ConnectTimeout = envDuration(loadErrors, "DB_CONNECT_TIMEOUT", cfg.Database.ConnectTimeout)
 	cfg.Log.Level = env("LOG_LEVEL", cfg.Log.Level)
 	cfg.Log.Format = env("LOG_FORMAT", cfg.Log.Format)
+	cfg.Log.TimeZone = env("LOG_TIMEZONE", cfg.Log.TimeZone)
 }
 
 func (c Config) Validate() error {
@@ -171,6 +175,9 @@ func (c Config) Validate() error {
 	}
 	if c.Log.Format != "json" && c.Log.Format != "text" {
 		validationErrors = append(validationErrors, errors.New("log format must be json or text"))
+	}
+	if _, err := time.LoadLocation(c.Log.TimeZone); err != nil {
+		validationErrors = append(validationErrors, fmt.Errorf("log timezone must be a valid IANA timezone: %w", err))
 	}
 	return errors.Join(validationErrors...)
 }
