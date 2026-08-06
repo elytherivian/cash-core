@@ -1,12 +1,12 @@
-# Cash
+# cash-core
 
-Cash 是一个使用 Gin、GORM 和 PostgreSQL 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
+cash-core 是一个使用 Gin、GORM 和 PostgreSQL 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
 
 ## 目录结构
 
 ```text
-cash/
-├── cmd/cash/main.go               # 程序入口、依赖初始化、优雅退出
+cash-core/
+├── cmd/cash-core/main.go          # 程序入口、依赖初始化、优雅退出
 ├── internal/
 │   ├── app/                       # 业务模块，模块之间不互相 import
 │   │   ├── user/
@@ -18,7 +18,6 @@ cash/
 │   │       ├── repository.go      # GORM 数据访问
 │   │       └── model.go           # 数据模型与请求结构
 │   ├── common/                    # 统一响应、错误、生命周期、分页
-│   ├── config/                    # YAML + 环境变量配置加载
 │   ├── pkg/                       # 跨模块共享的基础组件
 │   │   ├── database/              # GORM/PostgreSQL 初始化
 │   │   ├── logger/                # slog 日志初始化
@@ -26,7 +25,6 @@ cash/
 │   │   └── utils/                 # JSON、UUID、分页工具
 │   └── router/                    # 统一路由和模块依赖组装
 ├── migrations/                    # golang-migrate SQL 文件
-├── configs/                       # YAML 配置模板
 ├── deployments/                   # Docker Compose 部署文件
 ├── scripts/                       # 迁移等开发脚本
 └── test/integration/              # 跨模块 HTTP 集成测试
@@ -45,14 +43,13 @@ cash/
 
 ## 配置优先级
 
-配置加载顺序为：代码默认值 → YAML 文件 → 环境变量。后加载的值覆盖前面的值。
+配置加载顺序为：代码默认值 → 环境变量，后加载的值覆盖前面的值。
 
 ```bash
-cp configs/config.example.yaml configs/config.yaml
 cp .env.example .env
 ```
 
-默认读取 `configs/config.yaml`，也可以通过 `CONFIG_FILE` 指定其他位置。`make run` 会自动加载根目录的 `.env`；直接执行 `go run` 时需要自行导出环境变量。生产环境应使用环境变量或密钥管理系统覆盖数据库密码。
+`make run` 会自动加载根目录的 `.env`；直接执行 `go run` 时需要自行导出环境变量。生产环境应使用环境变量或密钥管理系统覆盖数据库密码。
 
 ## 本地启动
 

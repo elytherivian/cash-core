@@ -8,7 +8,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -trimpath \
     -ldflags="-s -w" \
-    -o /out/cash ./cmd/cash
+    -o /out/cash ./cmd/cash-core
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/cash /cash

@@ -18,11 +18,11 @@ help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 run: ## 在本机启动 API 服务（存在 .env 时自动加载）
-	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; go run ./cmd/cash
+	@if [ -f .env ]; then set -a; . ./.env; set +a; fi; go run ./cmd/cash-core
 
 build: ## 将 API 编译到 bin/cash
 	mkdir -p $(BIN_DIR)
-	go build -trimpath -o $(BIN_DIR)/$(APP_NAME) ./cmd/cash
+	go build -trimpath -o $(BIN_DIR)/$(APP_NAME) ./cmd/cash-core
 
 test: ## 运行全部单元测试
 	go test ./...

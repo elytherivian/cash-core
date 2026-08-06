@@ -10,7 +10,6 @@ coverage.html
 .env
 .env.*
 !.env.example
-/configs/config.yaml
 
 # Editors and operating systems
 .idea/
