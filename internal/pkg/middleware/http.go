@@ -17,6 +17,7 @@ import (
 
 const RequestIDKey = "request_id"
 
+// RequestID 给每个请求生成或读取一个 Request ID
 func RequestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")

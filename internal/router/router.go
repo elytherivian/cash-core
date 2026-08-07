@@ -27,9 +27,13 @@ func New(cfg config.Config, db *gorm.DB, pinger Pinger, log *slog.Logger) *gin.E
 	responder := common.NewResponder(cfg.App.Version)
 
 	engine := gin.New()
+	// 开启 405 Method Not Allowed 支持
 	engine.HandleMethodNotAllowed = true
+	// 设置可信代理 nil 指的是不信任任何代理
 	_ = engine.SetTrustedProxies(nil)
+	// 给每个请求生成或读取一个 Request ID
 	engine.Use(middleware.RequestID())
+	// 处理 panic 防止服务因为某个请求崩掉 返回错误信息
 	engine.Use(middleware.Recovery(log, responder))
 	engine.Use(middleware.Timeout(30 * time.Second))
 	engine.Use(middleware.SecurityHeaders())
@@ -81,6 +85,8 @@ func registerSystemRoutes(
 	})
 }
 
+// setMode 设置 gin 的运行模式
+// 不同模式下 gin 的日志输出和调试信息不同
 func setMode(environment string) {
 	switch environment {
 	case "production", "staging":
