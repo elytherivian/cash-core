@@ -2,6 +2,7 @@ package common
 
 import "errors"
 
+// 通用错误类别 映射为 HTTP 状态码
 var (
 	ErrNotFound         = errors.New("resource not found")
 	ErrConflict         = errors.New("resource already exists")

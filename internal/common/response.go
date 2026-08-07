@@ -22,10 +22,12 @@ func NewResponder(version string) Responder {
 	return Responder{version: version}
 }
 
+// Success 写入成功响应
 func (r Responder) Success(c *gin.Context, status int, message string, data any) {
 	c.JSON(status, Response{Version: r.version, Code: CodeSuccess, Message: message, Data: data})
 }
 
+// Error 写入错误响应
 func (r Responder) Error(c *gin.Context, err error) {
 	status, code, message := http.StatusInternalServerError, CodeInternalServerError, "internal server error"
 	switch {

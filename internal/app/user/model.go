@@ -23,8 +23,21 @@ type CreateRequest struct {
 	Password string `json:"password"`
 }
 
+// Normalize 去掉开头结尾的空白字符 空格 换行 tab 等
 func (r *CreateRequest) Normalize() {
 	r.Username = strings.TrimSpace(r.Username)
+	r.Password = strings.TrimSpace(r.Password)
+}
+
+type RegisterUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Normalize 去掉开头结尾的空白字符 空格 换行 tab 等
+func (r *RegisterUserRequest) Normalize() {
+	r.Username = strings.TrimSpace(r.Username)
+	r.Password = strings.TrimSpace(r.Password)
 }
 
 type Response struct {

@@ -1,10 +1,13 @@
 package common
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
-// Code is an application-level response code. It is independent of HTTP status codes.
 type Code int
 
+// 业务状态码 code
 const (
 	CodeSuccess Code = 0
 
@@ -31,7 +34,17 @@ func NewBusinessError(code Code, message string, cause error) error {
 	return &BusinessError{code: code, message: message, cause: cause}
 }
 
-func (e *BusinessError) Error() string { return e.message }
+// Error 返回通用错误类别和具体业务信息。
+func (e *BusinessError) Error() string {
+	switch {
+	case e.cause == nil:
+		return e.message
+	case e.message == "":
+		return e.cause.Error()
+	default:
+		return fmt.Sprintf("%s: %s", e.cause, e.message)
+	}
+}
 
 func (e *BusinessError) Unwrap() error { return e.cause }
 

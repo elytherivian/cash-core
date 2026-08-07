@@ -11,7 +11,7 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, value *User) error
+	Create(ctx context.Context, user *User) error
 	FindByID(ctx context.Context, id uuid.UUID) (*User, error)
 	Delete(ctx context.Context, id uuid.UUID, deletedAt time.Time) error
 }
@@ -24,8 +24,9 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) Create(ctx context.Context, value *User) error {
-	return database.NormalizeError(r.db.WithContext(ctx).Create(value).Error)
+// Create 数据库创建用户
+func (r *repository) Create(ctx context.Context, user *User) error {
+	return database.NormalizeError(r.db.WithContext(ctx).Create(user).Error)
 }
 
 func (r *repository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
