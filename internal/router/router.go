@@ -8,7 +8,7 @@ import (
 
 	"cash-core/internal/app/account"
 	"cash-core/internal/app/category"
-	transactionapp "cash-core/internal/app/transaction"
+	"cash-core/internal/app/transaction"
 	"cash-core/internal/app/user"
 	"cash-core/internal/common"
 	"cash-core/internal/config"
@@ -35,31 +35,31 @@ func New(cfg config.Config, db *gorm.DB, pinger Pinger, log *slog.Logger) *gin.E
 	engine.Use(middleware.RequestID())
 	// 处理 panic 防止服务因为某个请求崩掉 返回错误信息
 	engine.Use(middleware.Recovery(log, responder))
+	// 设置请求超时 30s 超时后返回 504 Gateway Timeout
 	engine.Use(middleware.Timeout(30 * time.Second))
 	engine.Use(middleware.SecurityHeaders())
+	// 设置跨域请求允许的来源 UI 只做桌面端和移动端 不用设置
 	engine.Use(middleware.CORS(cfg.HTTP.AllowedOrigins))
 	engine.Use(middleware.AccessLog(log))
 
+	// 注册系统级别的健康检查路由 /health/live /health/ready
 	registerSystemRoutes(engine, responder, pinger, log, cfg.App)
-	api := engine.Group("/api/v1")
 
-	user.NewHandler(user.NewService(user.NewRepository(db)), responder).RegisterRoutes(api)
-	account.NewHandler(account.NewService(account.NewRepository(db)), responder).RegisterRoutes(api)
-	category.NewHandler(category.NewService(category.NewRepository(db)), responder).RegisterRoutes(api)
-	transactionapp.NewHandler(
-		transactionapp.NewService(transactionapp.NewRepository(db)),
-		responder,
-	).RegisterRoutes(api)
+	// 注册 app 路由
+	user.RegisterAPI(engine, db, responder)
+	account.RegisterAPI(engine, db, responder)
+	category.RegisterAPI(engine, db, responder)
+	transaction.RegisterAPI(engine, db, responder)
 
+	// 注册全局路由 404 Not Found 405 Method Not Allowed
+	// 处理未注册的路由和方法 返回错误信息
 	engine.NoRoute(func(c *gin.Context) { responder.Error(c, common.ErrNotFound) })
-	engine.NoMethod(func(c *gin.Context) {
-		c.AbortWithStatusJSON(http.StatusMethodNotAllowed, common.Response{
-			Version: cfg.App.Version, Code: http.StatusMethodNotAllowed, Message: "method not allowed",
-		})
-	})
+	engine.NoMethod(func(c *gin.Context) { responder.Error(c, common.ErrMethodNotAllowed) })
 	return engine
 }
 
+// registerSystemRoutes 注册系统级别的路由
+// 健康检查 /health/live /health/ready
 func registerSystemRoutes(
 	engine *gin.Engine,
 	responder common.Responder,
@@ -79,9 +79,6 @@ func registerSystemRoutes(
 			return
 		}
 		responder.Success(c, http.StatusOK, "ready", nil)
-	})
-	engine.GET("/api/v1", func(c *gin.Context) {
-		responder.Success(c, http.StatusOK, "ok", gin.H{"name": app.Name, "version": app.Version})
 	})
 }
 

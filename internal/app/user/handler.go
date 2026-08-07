@@ -18,13 +18,6 @@ func NewHandler(service Service, responder common.Responder) *Handler {
 	return &Handler{service: service, responder: responder}
 }
 
-func (h *Handler) RegisterRoutes(api *gin.RouterGroup) {
-	routes := api.Group("/users")
-	routes.POST("", h.create)
-	routes.GET("/:user_id", h.get)
-	routes.DELETE("/:user_id", h.delete)
-}
-
 func (h *Handler) create(c *gin.Context) {
 	var request CreateRequest
 	if err := utils.DecodeJSON(c, &request); err != nil {

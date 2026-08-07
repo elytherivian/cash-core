@@ -26,7 +26,7 @@ func TestLivenessEndpoint(t *testing.T) {
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/live", nil))
 
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"version":"test"`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"version":"test"`) || !strings.Contains(response.Body.String(), `"code":0`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
@@ -40,7 +40,21 @@ func TestNotFoundUsesCommonResponse(t *testing.T) {
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/missing", nil))
 
-	if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), `"code":404`) {
+	if response.Code != http.StatusNotFound || !strings.Contains(response.Body.String(), `"code":40400`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestMethodNotAllowedUsesApplicationCode(t *testing.T) {
+	cfg := config.Config{
+		App:  config.App{Environment: "test", Name: "cash", Version: "test"},
+		HTTP: config.HTTP{AllowedOrigins: []string{"*"}},
+	}
+	engine := router.New(cfg, nil, healthyDatabase{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/health/live", nil))
+
+	if response.Code != http.StatusMethodNotAllowed || !strings.Contains(response.Body.String(), `"code":40500`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

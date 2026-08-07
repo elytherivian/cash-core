@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 	"unicode/utf8"
@@ -43,6 +44,13 @@ func (s *service) Create(ctx context.Context, request CreateRequest) (*User, err
 		Lifecycle: common.Lifecycle{IsActive: true},
 	}
 	if err := s.repository.Create(ctx, value); err != nil {
+		if errors.Is(err, common.ErrConflict) {
+			return nil, common.NewBusinessError(
+				common.CodeRegisterUserAlreadyExists,
+				"user already exists",
+				err,
+			)
+		}
 		return nil, err
 	}
 	return value, nil

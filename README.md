@@ -79,7 +79,6 @@ make run
 ```text
 GET /health/live
 GET /health/ready
-GET /api/v1
 ```
 
 业务端点：
@@ -110,11 +109,13 @@ DELETE /api/v1/users/:user_id/transactions/:id
 ```json
 {
   "version": "dev",
-  "code": 200,
+  "code": 0,
   "message": "ok",
   "data": {}
 }
 ```
+
+HTTP 状态码与响应体中的 `code` 相互独立：HTTP 状态码遵循 RESTful 语义，`code` 是应用业务码。成功响应使用 `0`；例如重复注册用户时 HTTP 返回 `409 Conflict`，响应体中的业务码返回 `40001`。没有数据的响应会省略 `data` 字段。业务码统一定义在 `internal/common/code.go`。
 
 ## Makefile
 

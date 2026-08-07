@@ -19,14 +19,6 @@ func NewHandler(service Service, responder common.Responder) *Handler {
 	return &Handler{service: service, responder: responder}
 }
 
-func (h *Handler) RegisterRoutes(api *gin.RouterGroup) {
-	routes := api.Group("/users/:user_id/categories")
-	routes.POST("", h.create)
-	routes.GET("", h.list)
-	routes.GET("/:id", h.get)
-	routes.DELETE("/:id", h.delete)
-}
-
 func (h *Handler) create(c *gin.Context) {
 	userID, err := utils.ParseUUID(c.Param("user_id"))
 	if err != nil {
