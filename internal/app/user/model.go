@@ -60,3 +60,21 @@ func (r *RestoreUserRequest) Normalize() {
 	r.Username = strings.TrimSpace(r.Username)
 	r.Password = strings.TrimSpace(r.Password)
 }
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (r *LoginRequest) Normalize() {
+	r.Username = strings.TrimSpace(r.Username)
+	r.Password = strings.TrimSpace(r.Password)
+}
+
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+func (r *RefreshTokenRequest) Normalize() {
+	r.RefreshToken = strings.TrimSpace(r.RefreshToken)
+}

@@ -75,3 +75,33 @@ func (h *Handler) restore(c *gin.Context) {
 
 	h.responder.Success(c, http.StatusOK, "user restored", nil)
 }
+
+func (h *Handler) login(c *gin.Context) {
+	var req LoginRequest
+	if err := utils.DecodeJSON(c, &req); err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+
+	tokens, err := h.service.Login(c.Request.Context(), req)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	h.responder.Success(c, http.StatusOK, "login successful", tokens)
+}
+
+func (h *Handler) refresh(c *gin.Context) {
+	var req RefreshTokenRequest
+	if err := utils.DecodeJSON(c, &req); err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+
+	tokens, err := h.service.Refresh(c.Request.Context(), req)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	h.responder.Success(c, http.StatusOK, "token refreshed", tokens)
+}

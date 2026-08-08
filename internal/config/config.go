@@ -16,6 +16,7 @@ import (
 type Config struct {
 	App      App
 	API      API
+	Auth     Auth
 	HTTP     HTTP
 	Database Database
 	Log      Log
@@ -40,6 +41,15 @@ func (c API) Location() *time.Location {
 		return time.UTC
 	}
 	return location
+}
+
+const defaultJWTSecret = "local-development-only-jwt-secret-change-me"
+
+type Auth struct {
+	Issuer          string
+	JWTSecret       string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 type HTTP struct {
@@ -110,6 +120,10 @@ func defaults() Config {
 	return Config{
 		App: App{Environment: "local", Name: "cash", Version: "dev"},
 		API: API{TimeZone: "Asia/Shanghai"},
+		Auth: Auth{
+			Issuer: "cash-core", JWTSecret: defaultJWTSecret,
+			AccessTokenTTL: 15 * time.Minute, RefreshTokenTTL: 30 * 24 * time.Hour,
+		},
 		HTTP: HTTP{
 			Host: "0.0.0.0", Port: 8080, ReadTimeout: 10 * time.Second,
 			ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second,
@@ -130,6 +144,10 @@ func applyEnvironment(cfg *Config, loadErrors *[]error) {
 	cfg.App.Name = env("APP_NAME", cfg.App.Name)
 	cfg.App.Version = env("APP_VERSION", cfg.App.Version)
 	cfg.API.TimeZone = env("API_TIMEZONE", cfg.API.TimeZone)
+	cfg.Auth.Issuer = env("JWT_ISSUER", cfg.Auth.Issuer)
+	cfg.Auth.JWTSecret = env("JWT_SECRET", cfg.Auth.JWTSecret)
+	cfg.Auth.AccessTokenTTL = envDuration(loadErrors, "JWT_ACCESS_TOKEN_TTL", cfg.Auth.AccessTokenTTL)
+	cfg.Auth.RefreshTokenTTL = envDuration(loadErrors, "JWT_REFRESH_TOKEN_TTL", cfg.Auth.RefreshTokenTTL)
 	cfg.HTTP.Host = env("HTTP_HOST", cfg.HTTP.Host)
 	cfg.HTTP.Port = envInt(loadErrors, "HTTP_PORT", cfg.HTTP.Port)
 	cfg.HTTP.ReadTimeout = envDuration(loadErrors, "HTTP_READ_TIMEOUT", cfg.HTTP.ReadTimeout)
@@ -161,6 +179,21 @@ func (c Config) Validate() error {
 	}
 	if _, err := time.LoadLocation(c.API.TimeZone); err != nil {
 		validationErrors = append(validationErrors, fmt.Errorf("API timezone must be a valid IANA timezone: %w", err))
+	}
+	if strings.TrimSpace(c.Auth.Issuer) == "" {
+		validationErrors = append(validationErrors, errors.New("JWT issuer must not be empty"))
+	}
+	if len(c.Auth.JWTSecret) < 32 {
+		validationErrors = append(validationErrors, errors.New("JWT secret must be at least 32 bytes"))
+	}
+	if (c.App.Environment == "production" || c.App.Environment == "staging") && c.Auth.JWTSecret == defaultJWTSecret {
+		validationErrors = append(validationErrors, errors.New("JWT secret must be changed outside local development"))
+	}
+	if c.Auth.AccessTokenTTL <= 0 {
+		validationErrors = append(validationErrors, errors.New("JWT access token TTL must be positive"))
+	}
+	if c.Auth.RefreshTokenTTL <= c.Auth.AccessTokenTTL {
+		validationErrors = append(validationErrors, errors.New("JWT refresh token TTL must be greater than access token TTL"))
 	}
 	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
 		validationErrors = append(validationErrors, errors.New("HTTP port must be between 1 and 65535"))

@@ -31,8 +31,11 @@ func (s *service) Create(ctx context.Context, userID uuid.UUID, request CreateRe
 	if length := utf8.RuneCountInString(request.AccountType); length < 1 || length > 100 {
 		return nil, fmt.Errorf("%w: account_type length must be between 1 and 100", common.ErrInvalidInput)
 	}
+	if length := utf8.RuneCountInString(request.AccountName); length < 1 || length > 100 {
+		return nil, fmt.Errorf("%w: account_name length must be between 1 and 100", common.ErrInvalidInput)
+	}
 	value := &Account{
-		ID: uuid.New(), UserID: userID, AccountType: request.AccountType,
+		ID: uuid.New(), UserID: userID, AccountType: request.AccountType, AccountName: request.AccountName,
 		InitialBalance: request.InitialBalance, Lifecycle: common.Lifecycle{IsActive: true},
 	}
 	if err := s.repository.Create(ctx, value); err != nil {

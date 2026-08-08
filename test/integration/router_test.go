@@ -58,3 +58,17 @@ func TestMethodNotAllowedUsesApplicationCode(t *testing.T) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
+
+func TestBusinessRoutesRequireAuthentication(t *testing.T) {
+	cfg := config.Config{
+		App:  config.App{Environment: "test", Name: "cash", Version: "test"},
+		HTTP: config.HTTP{AllowedOrigins: []string{"*"}},
+	}
+	engine := router.New(cfg, nil, healthyDatabase{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil))
+
+	if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), `"code":40100`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}

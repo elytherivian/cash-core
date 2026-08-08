@@ -26,6 +26,10 @@ services:
       APP_NAME: cash
       APP_VERSION: local
       CONFIG_FILE: ""
+      JWT_ISSUER: cash-core
+      JWT_SECRET: local-development-only-jwt-secret-change-me
+      JWT_ACCESS_TOKEN_TTL: 15m
+      JWT_REFRESH_TOKEN_TTL: 720h
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 8080
       DB_HOST: postgres

@@ -7,12 +7,32 @@ import (
 	"time"
 
 	"cash-core/internal/common"
+	"cash-core/internal/pkg/auth"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type conflictRepository struct{}
+
+type tokenService struct {
+	pair          auth.TokenPair
+	err           error
+	issuedUserID  uuid.UUID
+	issuedVersion int64
+	refreshToken  string
+}
+
+func (s *tokenService) Issue(userID uuid.UUID, version int64) (auth.TokenPair, error) {
+	s.issuedUserID = userID
+	s.issuedVersion = version
+	return s.pair, s.err
+}
+
+func (s *tokenService) Refresh(_ context.Context, refreshToken string) (auth.TokenPair, error) {
+	s.refreshToken = refreshToken
+	return s.pair, s.err
+}
 
 func (conflictRepository) Create(context.Context, *User) error {
 	return common.ErrConflict
@@ -80,7 +100,7 @@ func TestDeleteVerifiesPasswordAndSoftDeletesUser(t *testing.T) {
 	userID := uuid.New()
 	repository := &deleteRepository{user: &User{ID: userID, PasswordHash: string(passwordHash)}}
 
-	err = NewService(repository).Delete(context.Background(), DeleteUserRequest{
+	err = NewService(repository, nil).Delete(context.Background(), DeleteUserRequest{
 		Username: " user ",
 		Password: "password123",
 	})
@@ -103,7 +123,7 @@ func TestDeleteRejectsIncorrectPassword(t *testing.T) {
 	}
 	repository := &deleteRepository{user: &User{ID: uuid.New(), PasswordHash: string(passwordHash)}}
 
-	err = NewService(repository).Delete(context.Background(), DeleteUserRequest{
+	err = NewService(repository, nil).Delete(context.Background(), DeleteUserRequest{
 		Username: "user",
 		Password: "incorrect",
 	})
@@ -118,7 +138,7 @@ func TestDeleteRejectsIncorrectPassword(t *testing.T) {
 
 func TestDeleteRejectsInvalidRequestBeforeQuery(t *testing.T) {
 	repository := &deleteRepository{}
-	err := NewService(repository).Delete(context.Background(), DeleteUserRequest{})
+	err := NewService(repository, nil).Delete(context.Background(), DeleteUserRequest{})
 
 	if !errors.Is(err, common.ErrInvalidInput) {
 		t.Fatalf("Delete() error = %v; want ErrInvalidInput", err)
@@ -173,7 +193,7 @@ func TestRestoreVerifiesPasswordAndRestoresDeletedUser(t *testing.T) {
 		Lifecycle:    common.Lifecycle{IsActive: false, DeletedAt: &deletedAt},
 	}}
 
-	err = NewService(repository).Restore(context.Background(), RestoreUserRequest{
+	err = NewService(repository, nil).Restore(context.Background(), RestoreUserRequest{
 		Username: " user ",
 		Password: "password123",
 	})
@@ -191,7 +211,7 @@ func TestRestoreVerifiesPasswordAndRestoresDeletedUser(t *testing.T) {
 
 func TestRestoreRejectsMissingUser(t *testing.T) {
 	repository := &restoreRepository{findErr: common.ErrNotFound}
-	err := NewService(repository).Restore(context.Background(), RestoreUserRequest{
+	err := NewService(repository, nil).Restore(context.Background(), RestoreUserRequest{
 		Username: "missing-user",
 		Password: "password123",
 	})
@@ -209,7 +229,7 @@ func TestRestoreRejectsActiveUser(t *testing.T) {
 		ID:        uuid.New(),
 		Lifecycle: common.Lifecycle{IsActive: true},
 	}}
-	err := NewService(repository).Restore(context.Background(), RestoreUserRequest{
+	err := NewService(repository, nil).Restore(context.Background(), RestoreUserRequest{
 		Username: "active-user",
 		Password: "password123",
 	})
@@ -234,7 +254,7 @@ func TestRestoreRejectsIncorrectPassword(t *testing.T) {
 		Lifecycle:    common.Lifecycle{IsActive: false, DeletedAt: &deletedAt},
 	}}
 
-	err = NewService(repository).Restore(context.Background(), RestoreUserRequest{
+	err = NewService(repository, nil).Restore(context.Background(), RestoreUserRequest{
 		Username: "deleted-user",
 		Password: "incorrect",
 	})
@@ -244,5 +264,58 @@ func TestRestoreRejectsIncorrectPassword(t *testing.T) {
 	}
 	if repository.restoreCalled {
 		t.Fatal("repository Restore() called for an incorrect password")
+	}
+}
+
+func TestLoginVerifiesPasswordAndIssuesTokens(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	userID := uuid.New()
+	updatedAt := time.Date(2026, time.August, 8, 10, 0, 0, 123456000, time.UTC)
+	repository := &deleteRepository{user: &User{
+		ID: userID, PasswordHash: string(passwordHash),
+		Lifecycle: common.Lifecycle{IsActive: true, UpdatedAt: updatedAt},
+	}}
+	want := auth.TokenPair{AccessToken: "access", RefreshToken: "refresh"}
+	tokens := &tokenService{pair: want}
+
+	got, err := NewService(repository, tokens).Login(context.Background(), LoginRequest{
+		Username: " user ", Password: "password123",
+	})
+
+	if err != nil {
+		t.Fatalf("Login(): %v", err)
+	}
+	if got != want {
+		t.Fatalf("Login() = %+v, want %+v", got, want)
+	}
+	if tokens.issuedUserID != userID || tokens.issuedVersion != updatedAt.UnixMicro() {
+		t.Fatalf("issued user/version = %s/%d", tokens.issuedUserID, tokens.issuedVersion)
+	}
+}
+
+func TestLoginHidesMissingUsername(t *testing.T) {
+	repository := &deleteRepository{findErr: common.ErrNotFound}
+	_, err := NewService(repository, &tokenService{}).Login(context.Background(), LoginRequest{
+		Username: "missing", Password: "password123",
+	})
+	if !errors.Is(err, common.ErrUnauthenticated) {
+		t.Fatalf("Login() error = %v; want ErrUnauthenticated", err)
+	}
+}
+
+func TestRefreshDelegatesToTokenService(t *testing.T) {
+	want := auth.TokenPair{AccessToken: "new-access", RefreshToken: "new-refresh"}
+	tokens := &tokenService{pair: want}
+	got, err := NewService(&deleteRepository{}, tokens).Refresh(context.Background(), RefreshTokenRequest{
+		RefreshToken: " refresh-token ",
+	})
+	if err != nil {
+		t.Fatalf("Refresh(): %v", err)
+	}
+	if got != want || tokens.refreshToken != "refresh-token" {
+		t.Fatalf("Refresh() = %+v, token = %q", got, tokens.refreshToken)
 	}
 }

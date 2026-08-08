@@ -86,26 +86,69 @@ GET /health/ready
 业务端点：
 
 ```text
-POST   /api/v1/users
-GET    /api/v1/users/:user_id
+POST   /api/v1/users/register
 DELETE /api/v1/users/delete
 POST   /api/v1/users/restore
 
-POST   /api/v1/users/:user_id/accounts
-GET    /api/v1/users/:user_id/accounts
-GET    /api/v1/users/:user_id/accounts/:id
-DELETE /api/v1/users/:user_id/accounts/:id
+POST   /api/v1/auth/login
+POST   /api/v1/auth/refresh
 
-POST   /api/v1/users/:user_id/categories
-GET    /api/v1/users/:user_id/categories?type=expense
-GET    /api/v1/users/:user_id/categories/:id
-DELETE /api/v1/users/:user_id/categories/:id
+POST   /api/v1/accounts
+GET    /api/v1/accounts
+GET    /api/v1/accounts/:id
+DELETE /api/v1/accounts/:id
 
-POST   /api/v1/users/:user_id/transactions
-GET    /api/v1/users/:user_id/transactions?from=2026-08-01T00:00:00Z&to=2026-09-01T00:00:00Z
-GET    /api/v1/users/:user_id/transactions/:id
-DELETE /api/v1/users/:user_id/transactions/:id
+POST   /api/v1/categories
+GET    /api/v1/categories?type=expense
+GET    /api/v1/categories/:id
+DELETE /api/v1/categories/:id
+
+POST   /api/v1/transactions
+GET    /api/v1/transactions?from=2026-08-01T00:00:00Z&to=2026-09-01T00:00:00Z
+GET    /api/v1/transactions/:id
+DELETE /api/v1/transactions/:id
 ```
+
+注册、删除、恢复、登录和刷新 token 不要求 JWT。账户、分类和流水接口必须携带：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+用户身份只从验证通过的 JWT 中解析，客户端不再通过 URL 或请求体提交 `user_id`。
+
+创建账户时，`account_type` 表示账户渠道或银行类型，`account_name` 用于区分同一类型下的多个账户：
+
+```json
+{
+  "account_type": "wechat",
+  "account_name": "wechat1",
+  "initial_balance": "0"
+}
+```
+
+同一用户可以创建 `wechat1`、`wechat2` 等多个 `wechat` 账户；有效账户的 `(account_type, account_name)` 组合必须唯一。
+
+登录请求：
+
+```json
+{
+  "username": "cash-user",
+  "password": "password123"
+}
+```
+
+登录和刷新成功后返回 `user_id`、15 分钟有效的 `access_token`，以及默认 30 天有效的 `refresh_token`。刷新请求：
+
+```json
+{
+  "refresh_token": "<refresh_token>"
+}
+```
+
+JWT 参数由 `JWT_ISSUER`、`JWT_SECRET`、`JWT_ACCESS_TOKEN_TTL` 和 `JWT_REFRESH_TOKEN_TTL` 控制。生产环境必须使用 HTTPS，并将 `JWT_SECRET` 替换为至少 32 字节的随机值，例如 `openssl rand -base64 48` 的输出。
+
+桌面端和移动端不应保存用户密码。access token 仅保存在进程内存；refresh token 在 macOS 保存到 Keychain，在 Android 使用 Android Keystore 中的 AES 密钥加密后保存密文。应用启动时读取 refresh token 调用刷新接口，刷新失败则清除本地 token 并重新显示登录页。
 
 所有响应使用统一结构：
 
