@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"cash-core/internal/common"
 
@@ -25,37 +24,34 @@ func NewService(repository Repository) Service { return &service{repository: rep
 
 func (s *service) Create(ctx context.Context, userID uuid.UUID, request CreateRequest) (*Category, error) {
 	request.Normalize()
-	if length := utf8.RuneCountInString(request.CategoryName); length < 1 || length > 80 {
-		return nil, fmt.Errorf("%w: category_name length must be between 1 and 80", common.ErrInvalidInput)
+	if !request.CategoryType.Valid() {
+		return nil, fmt.Errorf("%w: category_type must be income or expense", common.ErrInvalidInput)
 	}
-	if !request.Type.Valid() {
-		return nil, fmt.Errorf("%w: type must be income or expense", common.ErrInvalidInput)
-	}
-	value := &Category{
-		ID: uuid.New(), UserID: userID, CategoryName: request.CategoryName, Type: request.Type,
+	category := &Category{
+		ID: uuid.New(), UserID: userID, CategoryType: request.CategoryType,
 		Lifecycle: common.Lifecycle{IsActive: true},
 	}
-	if err := s.repository.Create(ctx, value); err != nil {
+	if err := s.repository.Create(ctx, category); err != nil {
 		return nil, err
 	}
-	return value, nil
+	return category, nil
 }
 
 func (s *service) Get(ctx context.Context, userID, id uuid.UUID) (*Category, error) {
 	return s.repository.FindByID(ctx, userID, id)
 }
 
-func (s *service) List(ctx context.Context, userID uuid.UUID, value string, page common.Page) ([]Category, int64, error) {
-	var transactionType *TransactionType
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value != "" {
-		parsed := TransactionType(value)
+func (s *service) List(ctx context.Context, userID uuid.UUID, categoryTypeValue string, page common.Page) ([]Category, int64, error) {
+	var categoryType *CategoryType
+	categoryTypeValue = strings.ToLower(strings.TrimSpace(categoryTypeValue))
+	if categoryTypeValue != "" {
+		parsed := CategoryType(categoryTypeValue)
 		if !parsed.Valid() {
-			return nil, 0, fmt.Errorf("%w: type must be income or expense", common.ErrInvalidInput)
+			return nil, 0, fmt.Errorf("%w: category_type must be income or expense", common.ErrInvalidInput)
 		}
-		transactionType = &parsed
+		categoryType = &parsed
 	}
-	return s.repository.ListByUser(ctx, userID, transactionType, page)
+	return s.repository.ListByUser(ctx, userID, categoryType, page)
 }
 
 func (s *service) Delete(ctx context.Context, userID, id uuid.UUID) error {

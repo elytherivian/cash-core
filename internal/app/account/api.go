@@ -19,9 +19,7 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, ve
 		routes.Use(middleware.Authentication(verifier, responder))
 
 		// /api/v1/accounts
-		routes.POST("", handler.create)
-		routes.GET("", handler.list)
-		routes.GET("/:id", handler.get)
-		routes.DELETE("/:id", handler.delete)
+		routes.POST("/create", handler.create)
+		routes.GET("/list", handler.listAccounts)
 	}
 }

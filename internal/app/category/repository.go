@@ -12,9 +12,9 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, value *Category) error
+	Create(ctx context.Context, category *Category) error
 	FindByID(ctx context.Context, userID, id uuid.UUID) (*Category, error)
-	ListByUser(ctx context.Context, userID uuid.UUID, transactionType *TransactionType, page common.Page) ([]Category, int64, error)
+	ListByUser(ctx context.Context, userID uuid.UUID, categoryType *CategoryType, page common.Page) ([]Category, int64, error)
 	Delete(ctx context.Context, userID, id uuid.UUID, deletedAt time.Time) error
 }
 
@@ -22,8 +22,8 @@ type repository struct{ db *gorm.DB }
 
 func NewRepository(db *gorm.DB) Repository { return &repository{db: db} }
 
-func (r *repository) Create(ctx context.Context, value *Category) error {
-	return database.NormalizeError(r.db.WithContext(ctx).Create(value).Error)
+func (r *repository) Create(ctx context.Context, category *Category) error {
+	return database.NormalizeError(r.db.WithContext(ctx).Create(category).Error)
 }
 
 func (r *repository) FindByID(ctx context.Context, userID, id uuid.UUID) (*Category, error) {
@@ -37,13 +37,13 @@ func (r *repository) FindByID(ctx context.Context, userID, id uuid.UUID) (*Categ
 func (r *repository) ListByUser(
 	ctx context.Context,
 	userID uuid.UUID,
-	transactionType *TransactionType,
+	categoryType *CategoryType,
 	page common.Page,
 ) ([]Category, int64, error) {
 	query := r.db.WithContext(ctx).Model(&Category{}).
 		Where("user_id = ? AND is_active = TRUE", userID)
-	if transactionType != nil {
-		query = query.Where("type = ?", *transactionType)
+	if categoryType != nil {
+		query = query.Where("category_type = ?", *categoryType)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

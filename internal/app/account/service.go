@@ -3,7 +3,6 @@ package account
 import (
 	"context"
 	"fmt"
-	"time"
 	"unicode/utf8"
 
 	"cash-core/internal/common"
@@ -12,10 +11,8 @@ import (
 )
 
 type Service interface {
-	Create(ctx context.Context, userID uuid.UUID, request CreateRequest) (*Account, error)
-	Get(ctx context.Context, userID, id uuid.UUID) (*Account, error)
-	List(ctx context.Context, userID uuid.UUID, page common.Page) ([]Account, int64, error)
-	Delete(ctx context.Context, userID, id uuid.UUID) error
+	Create(ctx context.Context, userID uuid.UUID, req CreateAccountRequest) (*Account, error)
+	ListAccounts(ctx context.Context, userID uuid.UUID) ([]Account, error)
 }
 
 type service struct {
@@ -26,32 +23,24 @@ func NewService(repository Repository) Service {
 	return &service{repository: repository}
 }
 
-func (s *service) Create(ctx context.Context, userID uuid.UUID, request CreateRequest) (*Account, error) {
-	request.Normalize()
-	if length := utf8.RuneCountInString(request.AccountType); length < 1 || length > 100 {
-		return nil, fmt.Errorf("%w: account_type length must be between 1 and 100", common.ErrInvalidInput)
+func (s *service) Create(ctx context.Context, userID uuid.UUID, req CreateAccountRequest) (*Account, error) {
+	req.Normalize()
+	if !req.AccountType.IsValid() {
+		return nil, fmt.Errorf("%w: account_type must be one of WeChat, AliPay, BOC", common.ErrInvalidInput)
 	}
-	if length := utf8.RuneCountInString(request.AccountName); length < 1 || length > 100 {
+	if length := utf8.RuneCountInString(req.AccountName); length < 1 || length > 100 {
 		return nil, fmt.Errorf("%w: account_name length must be between 1 and 100", common.ErrInvalidInput)
 	}
-	value := &Account{
-		ID: uuid.New(), UserID: userID, AccountType: request.AccountType, AccountName: request.AccountName,
-		InitialBalance: request.InitialBalance, Lifecycle: common.Lifecycle{IsActive: true},
+	account := &Account{
+		ID: uuid.New(), UserID: userID, AccountType: req.AccountType, AccountName: req.AccountName,
+		InitialBalance: req.InitialBalance, Lifecycle: common.Lifecycle{IsActive: true},
 	}
-	if err := s.repository.Create(ctx, value); err != nil {
+	if err := s.repository.Create(ctx, account); err != nil {
 		return nil, err
 	}
-	return value, nil
+	return account, nil
 }
 
-func (s *service) Get(ctx context.Context, userID, id uuid.UUID) (*Account, error) {
-	return s.repository.FindByID(ctx, userID, id)
-}
-
-func (s *service) List(ctx context.Context, userID uuid.UUID, page common.Page) ([]Account, int64, error) {
-	return s.repository.ListByUser(ctx, userID, page)
-}
-
-func (s *service) Delete(ctx context.Context, userID, id uuid.UUID) error {
-	return s.repository.Delete(ctx, userID, id, time.Now().UTC())
+func (s *service) ListAccounts(ctx context.Context, userID uuid.UUID) ([]Account, error) {
+	return s.repository.ListActiveAccountsByUserID(ctx, userID)
 }

@@ -14,14 +14,15 @@ import (
 
 func TestGORMModelsMatchMigrationTables(t *testing.T) {
 	tests := []struct {
-		name     string
-		value    any
-		table    string
-		required []string
+		name      string
+		value     any
+		table     string
+		required  []string
+		forbidden []string
 	}{
 		{name: "user", value: &user.User{}, table: "users", required: []string{"id", "username", "password_hash"}},
 		{name: "account", value: &account.Account{}, table: "accounts", required: []string{"id", "user_id", "account_type", "account_name", "initial_balance"}},
-		{name: "category", value: &category.Category{}, table: "categories", required: []string{"id", "user_id", "category_name", "type"}},
+		{name: "category", value: &category.Category{}, table: "categories", required: []string{"id", "user_id", "category_type"}, forbidden: []string{"category_name", "type"}},
 		{name: "transaction", value: &transactionapp.Transaction{}, table: "transactions", required: []string{"id", "user_id", "type", "amount", "account_id", "category_id", "occurred_at"}},
 	}
 
@@ -38,6 +39,11 @@ func TestGORMModelsMatchMigrationTables(t *testing.T) {
 			for _, field := range required {
 				if parsed.LookUpField(field) == nil {
 					t.Errorf("GORM schema is missing %q", field)
+				}
+			}
+			for _, field := range test.forbidden {
+				if parsed.LookUpField(field) != nil {
+					t.Errorf("GORM schema still contains %q", field)
 				}
 			}
 		})

@@ -93,13 +93,11 @@ POST   /api/v1/users/restore
 POST   /api/v1/auth/login
 POST   /api/v1/auth/refresh
 
-POST   /api/v1/accounts
-GET    /api/v1/accounts
-GET    /api/v1/accounts/:id
-DELETE /api/v1/accounts/:id
+POST   /api/v1/accounts/create
+GET    /api/v1/accounts/list
 
 POST   /api/v1/categories
-GET    /api/v1/categories?type=expense
+GET    /api/v1/categories?category_type=expense
 GET    /api/v1/categories/:id
 DELETE /api/v1/categories/:id
 
@@ -117,17 +115,17 @@ Authorization: Bearer <access_token>
 
 用户身份只从验证通过的 JWT 中解析，客户端不再通过 URL 或请求体提交 `user_id`。
 
-创建账户时，`account_type` 表示账户渠道或银行类型，`account_name` 用于区分同一类型下的多个账户：
+创建账户时，`account_type` 表示账户渠道或银行类型，目前仅支持 `WeChat`、`AliPay`、`BOC`；`account_name` 用于区分同一类型下的多个账户：
 
 ```json
 {
-  "account_type": "wechat",
+  "account_type": "WeChat",
   "account_name": "wechat1",
   "initial_balance": "0"
 }
 ```
 
-同一用户可以创建 `wechat1`、`wechat2` 等多个 `wechat` 账户；有效账户的 `(account_type, account_name)` 组合必须唯一。
+同一用户可以创建 `wechat1`、`wechat2` 等多个 `WeChat` 账户；有效账户的 `(account_type, account_name)` 组合必须唯一。
 
 登录请求：
 

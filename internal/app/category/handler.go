@@ -48,7 +48,7 @@ func (h *Handler) list(c *gin.Context) {
 		h.responder.Error(c, err)
 		return
 	}
-	values, total, err := h.service.List(c.Request.Context(), userID, c.Query("type"), page)
+	values, total, err := h.service.List(c.Request.Context(), userID, c.Query("category_type"), page)
 	if err != nil {
 		h.responder.Error(c, err)
 		return

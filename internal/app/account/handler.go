@@ -25,65 +25,30 @@ func (h *Handler) create(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var request CreateRequest
-	if err := utils.DecodeJSON(c, &request); err != nil {
+	var req CreateAccountRequest
+	if err := utils.DecodeJSON(c, &req); err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	value, err := h.service.Create(c.Request.Context(), userID, request)
+	createdAccount, err := h.service.Create(c.Request.Context(), userID, req)
 	if err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	h.responder.Success(c, http.StatusCreated, "account created", value)
+	h.responder.Success(c, http.StatusCreated, "account created", createdAccount)
 }
 
-func (h *Handler) list(c *gin.Context) {
+func (h *Handler) listAccounts(c *gin.Context) {
 	userID, ok := h.authenticatedUserID(c)
 	if !ok {
 		return
 	}
-	page, err := utils.ParsePage(c)
+	accounts, err := h.service.ListAccounts(c.Request.Context(), userID)
 	if err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	values, total, err := h.service.List(c.Request.Context(), userID, page)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(
-		c, http.StatusOK, "ok",
-		common.PageData{
-			Items: values, Total: total, Limit: page.Limit, Offset: page.Offset,
-		},
-	)
-}
-
-func (h *Handler) get(c *gin.Context) {
-	userID, id, ok := h.parseID(c)
-	if !ok {
-		return
-	}
-	value, err := h.service.Get(c.Request.Context(), userID, id)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(c, http.StatusOK, "ok", value)
-}
-
-func (h *Handler) delete(c *gin.Context) {
-	userID, id, ok := h.parseID(c)
-	if !ok {
-		return
-	}
-	if err := h.service.Delete(c.Request.Context(), userID, id); err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(c, http.StatusOK, "account deleted", nil)
+	h.responder.Success(c, http.StatusOK, "accounts listed", accounts)
 }
 
 func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
@@ -93,17 +58,4 @@ func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return userID, true
-}
-
-func (h *Handler) parseID(c *gin.Context) (userID, id uuid.UUID, ok bool) {
-	userID, ok = h.authenticatedUserID(c)
-	if !ok {
-		return uuid.Nil, uuid.Nil, false
-	}
-	id, err := utils.ParseUUID(c.Param("id"))
-	if err != nil {
-		h.responder.Error(c, err)
-		return uuid.Nil, uuid.Nil, false
-	}
-	return userID, id, true
 }
