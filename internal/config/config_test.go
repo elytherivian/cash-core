@@ -20,13 +20,21 @@ func TestLoadEnvironmentOverridesDefaults(t *testing.T) {
 	t.Setenv("APP_NAME", "from-environment")
 	t.Setenv("HTTP_PORT", "9100")
 	t.Setenv("HTTP_SHUTDOWN_TIMEOUT", "20s")
+	t.Setenv("API_TIMEZONE", "America/New_York")
 	t.Setenv("LOG_TIMEZONE", "Asia/Shanghai")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
-	if cfg.App.Name != "from-environment" || cfg.HTTP.Port != 9100 || cfg.HTTP.ShutdownTimeout != 20*time.Second || cfg.Log.TimeZone != "Asia/Shanghai" {
+	if cfg.App.Name != "from-environment" || cfg.API.TimeZone != "America/New_York" || cfg.HTTP.Port != 9100 || cfg.HTTP.ShutdownTimeout != 20*time.Second || cfg.Log.TimeZone != "Asia/Shanghai" {
 		t.Fatalf("unexpected loaded config: %+v", cfg)
+	}
+}
+
+func TestLoadRejectsInvalidAPITimeZone(t *testing.T) {
+	t.Setenv("API_TIMEZONE", "UTC+8")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "API timezone must be a valid IANA timezone") {
+		t.Fatalf("expected invalid API_TIMEZONE error, got %v", err)
 	}
 }
 

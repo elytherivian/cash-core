@@ -15,6 +15,7 @@ import (
 
 type Config struct {
 	App      App
+	API      API
 	HTTP     HTTP
 	Database Database
 	Log      Log
@@ -24,6 +25,21 @@ type App struct {
 	Environment string
 	Name        string
 	Version     string
+}
+
+// API 包含影响 HTTP 响应内容的配置。
+type API struct {
+	TimeZone string
+}
+
+// Location 返回 API 响应使用的时区。配置在启动前已经校验；这里保留 UTC
+// 兜底，便于直接构造 Config 的测试和调用方安全使用。
+func (c API) Location() *time.Location {
+	location, err := time.LoadLocation(c.TimeZone)
+	if err != nil {
+		return time.UTC
+	}
+	return location
 }
 
 type HTTP struct {
@@ -93,6 +109,7 @@ func Load() (Config, error) {
 func defaults() Config {
 	return Config{
 		App: App{Environment: "local", Name: "cash", Version: "dev"},
+		API: API{TimeZone: "Asia/Shanghai"},
 		HTTP: HTTP{
 			Host: "0.0.0.0", Port: 8080, ReadTimeout: 10 * time.Second,
 			ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second,
@@ -112,6 +129,7 @@ func applyEnvironment(cfg *Config, loadErrors *[]error) {
 	cfg.App.Environment = env("APP_ENV", cfg.App.Environment)
 	cfg.App.Name = env("APP_NAME", cfg.App.Name)
 	cfg.App.Version = env("APP_VERSION", cfg.App.Version)
+	cfg.API.TimeZone = env("API_TIMEZONE", cfg.API.TimeZone)
 	cfg.HTTP.Host = env("HTTP_HOST", cfg.HTTP.Host)
 	cfg.HTTP.Port = envInt(loadErrors, "HTTP_PORT", cfg.HTTP.Port)
 	cfg.HTTP.ReadTimeout = envDuration(loadErrors, "HTTP_READ_TIMEOUT", cfg.HTTP.ReadTimeout)
@@ -140,6 +158,9 @@ func (c Config) Validate() error {
 	var validationErrors []error
 	if c.App.Name == "" {
 		validationErrors = append(validationErrors, errors.New("app name must not be empty"))
+	}
+	if _, err := time.LoadLocation(c.API.TimeZone); err != nil {
+		validationErrors = append(validationErrors, fmt.Errorf("API timezone must be a valid IANA timezone: %w", err))
 	}
 	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
 		validationErrors = append(validationErrors, errors.New("HTTP port must be between 1 and 65535"))

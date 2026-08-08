@@ -2,6 +2,7 @@ package user
 
 import (
 	"net/http"
+	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/utils"
@@ -12,25 +13,14 @@ import (
 type Handler struct {
 	service   Service
 	responder common.Responder
+	location  *time.Location
 }
 
-func NewHandler(service Service, responder common.Responder) *Handler {
-	return &Handler{service: service, responder: responder}
-}
-
-func (h *Handler) create(c *gin.Context) {
-	var request CreateRequest
-	if err := utils.DecodeJSON(c, &request); err != nil {
-		h.responder.Error(c, err)
-		return
+func NewHandler(service Service, responder common.Responder, location *time.Location) *Handler {
+	if location == nil {
+		location = time.UTC
 	}
-	value, err := h.service.Create(c.Request.Context(), request)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	// 写入返回
-	h.responder.Success(c, http.StatusCreated, "user created", value.Response())
+	return &Handler{service: service, responder: responder, location: location}
 }
 
 // register 注册用户
@@ -48,32 +38,40 @@ func (h *Handler) register(c *gin.Context) {
 		h.responder.Error(c, err)
 		return
 	}
-	h.responder.Success(c, http.StatusCreated, "user registered", user.Response())
-}
 
-func (h *Handler) get(c *gin.Context) {
-	id, err := utils.ParseUUID(c.Param("user_id"))
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	value, err := h.service.Get(c.Request.Context(), id)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(c, http.StatusOK, "ok", value.Response())
+	h.responder.Success(
+		c, http.StatusCreated,
+		"user registered",
+		user.RegisterUserResponse(h.location),
+	)
 }
 
 func (h *Handler) delete(c *gin.Context) {
-	id, err := utils.ParseUUID(c.Param("user_id"))
-	if err != nil {
+	var req DeleteUserRequest
+	if err := utils.DecodeJSON(c, &req); err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+
+	if err := h.service.Delete(c.Request.Context(), req); err != nil {
 		h.responder.Error(c, err)
 		return
 	}
+
 	h.responder.Success(c, http.StatusOK, "user deleted", nil)
+}
+
+func (h *Handler) restore(c *gin.Context) {
+	var req RestoreUserRequest
+	if err := utils.DecodeJSON(c, &req); err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+
+	if err := h.service.Restore(c.Request.Context(), req); err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+
+	h.responder.Success(c, http.StatusOK, "user restored", nil)
 }

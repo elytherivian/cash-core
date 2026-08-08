@@ -46,7 +46,7 @@ func New(cfg config.Config, db *gorm.DB, pinger Pinger, log *slog.Logger) *gin.E
 	registerSystemRoutes(engine, responder, pinger, log, cfg.App)
 
 	// 注册 app 路由
-	user.RegisterAPI(engine, db, responder)
+	user.RegisterAPI(engine, db, responder, cfg.API.Location())
 	account.RegisterAPI(engine, db, responder)
 	category.RegisterAPI(engine, db, responder)
 	transaction.RegisterAPI(engine, db, responder)

@@ -51,6 +51,8 @@ cp .env.example .env
 
 `make run` 会自动加载根目录的 `.env`；直接执行 `go run` 时需要自行导出环境变量。生产环境应使用环境变量或密钥管理系统覆盖数据库密码。
 
+`API_TIMEZONE` 控制 API 响应中时间字段的展示时区（默认 `Asia/Shanghai`，使用 IANA 时区名）。数据库仍统一以 UTC 存储，避免因部署地区改变而影响数据语义。
+
 ## 本地启动
 
 需要安装 Go 1.25 和 Docker。数据库迁移通过 Compose 中的 `migrate/migrate` 容器执行，不要求宿主机安装 `golang-migrate`。
@@ -86,7 +88,8 @@ GET /health/ready
 ```text
 POST   /api/v1/users
 GET    /api/v1/users/:user_id
-DELETE /api/v1/users/:user_id
+DELETE /api/v1/users/delete
+POST   /api/v1/users/restore
 
 POST   /api/v1/users/:user_id/accounts
 GET    /api/v1/users/:user_id/accounts

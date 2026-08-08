@@ -1,6 +1,8 @@
 package user
 
 import (
+	"time"
+
 	"cash-core/internal/common"
 
 	"github.com/gin-gonic/gin"
@@ -9,8 +11,8 @@ import (
 
 const apiVersion = "/api/v1"
 
-func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder) {
-	handler := NewHandler(NewService(NewRepository(db)), responder)
+func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, location *time.Location) {
+	handler := NewHandler(NewService(NewRepository(db)), responder, location)
 
 	api := engine.Group(apiVersion)
 
@@ -19,7 +21,7 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder) {
 
 		// /api/v1/users
 		routes.POST("/register", handler.register)
-		routes.GET("/:user_id", handler.get)
-		routes.DELETE("/:user_id", handler.delete)
+		routes.DELETE("/delete", handler.delete)
+		routes.POST("/restore", handler.restore)
 	}
 }
