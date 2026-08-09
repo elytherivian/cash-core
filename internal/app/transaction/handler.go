@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -41,6 +42,67 @@ func (h *Handler) createTransaction(c *gin.Context) {
 		return
 	}
 	h.responder.Success(c, http.StatusCreated, "transaction created", transaction.Response(h.location))
+}
+
+func (h *Handler) getByAccount(c *gin.Context) {
+	h.listTransactions(c, true, false)
+}
+
+func (h *Handler) getByCategory(c *gin.Context) {
+	h.listTransactions(c, false, true)
+}
+
+func (h *Handler) getByAccountAndCategory(c *gin.Context) {
+	h.listTransactions(c, true, true)
+}
+
+func (h *Handler) listTransactions(c *gin.Context, requireAccountID, requireCategoryID bool) {
+	userID, ok := h.authenticatedUserID(c)
+	if !ok {
+		return
+	}
+	request, err := parseListTransactionsRequest(c, requireAccountID, requireCategoryID)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	transactions, err := h.service.ListTransactions(c.Request.Context(), userID, request)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	responses := make([]TransactionResponse, 0, len(transactions))
+	for _, transaction := range transactions {
+		responses = append(responses, transaction.Response(h.location))
+	}
+	h.responder.Success(c, http.StatusOK, "transactions listed", responses)
+}
+
+func parseListTransactionsRequest(c *gin.Context, requireAccountID, requireCategoryID bool) (ListTransactionsRequest, error) {
+	request := ListTransactionsRequest{}
+	if requireAccountID {
+		accountID, err := parseRequiredQueryUUID(c, "account_id")
+		if err != nil {
+			return ListTransactionsRequest{}, err
+		}
+		request.AccountID = &accountID
+	}
+	if requireCategoryID {
+		categoryID, err := parseRequiredQueryUUID(c, "category_id")
+		if err != nil {
+			return ListTransactionsRequest{}, err
+		}
+		request.CategoryID = &categoryID
+	}
+	return request, nil
+}
+
+func parseRequiredQueryUUID(c *gin.Context, queryName string) (uuid.UUID, error) {
+	value := c.Query(queryName)
+	if value == "" {
+		return uuid.Nil, fmt.Errorf("%w: %s is required", common.ErrInvalidInput, queryName)
+	}
+	return utils.ParseUUID(value)
 }
 
 func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
