@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// User 数据库模型
 type User struct {
 	ID           uuid.UUID `gorm:"column:id;type:uuid;primaryKey" json:"id"`
 	Username     string    `gorm:"column:username;size:50;not null" json:"username"`
@@ -28,16 +29,15 @@ func (r *RegisterUserRequest) Normalize() {
 	r.Password = strings.TrimSpace(r.Password)
 }
 
-type RegisterUserResponse struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
-	IsActive  bool      `json:"is_active"`
+type UserResponse struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	common.LifecycleResponse
 }
 
-func (u *User) RegisterUserResponse(location *time.Location) RegisterUserResponse {
-	return RegisterUserResponse{
-		ID: u.ID, Username: u.Username, CreatedAt: u.CreatedAt.In(location), IsActive: u.IsActive,
+func (u User) Response(location *time.Location) UserResponse {
+	return UserResponse{
+		ID: u.ID, Username: u.Username, LifecycleResponse: u.Lifecycle.Response(location),
 	}
 }
 

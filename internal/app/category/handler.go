@@ -2,6 +2,7 @@ package category
 
 import (
 	"net/http"
+	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/middleware"
@@ -14,71 +15,49 @@ import (
 type Handler struct {
 	service   Service
 	responder common.Responder
+	location  *time.Location
 }
 
-func NewHandler(service Service, responder common.Responder) *Handler {
-	return &Handler{service: service, responder: responder}
+func NewHandler(service Service, responder common.Responder, location *time.Location) *Handler {
+	if location == nil {
+		location = time.UTC
+	}
+	return &Handler{service: service, responder: responder, location: location}
 }
 
-func (h *Handler) create(c *gin.Context) {
+func (h *Handler) createCategory(c *gin.Context) {
 	userID, ok := h.authenticatedUserID(c)
 	if !ok {
 		return
 	}
-	var request CreateRequest
+	var request CreateCategoryRequest
 	if err := utils.DecodeJSON(c, &request); err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	value, err := h.service.Create(c.Request.Context(), userID, request)
+	category, err := h.service.CreateCategory(c.Request.Context(), userID, request)
 	if err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	h.responder.Success(c, http.StatusCreated, "category created", value)
+	h.responder.Success(c, http.StatusCreated, "category created", category.Response(h.location))
 }
 
-func (h *Handler) list(c *gin.Context) {
+func (h *Handler) listCategories(c *gin.Context) {
 	userID, ok := h.authenticatedUserID(c)
 	if !ok {
 		return
 	}
-	page, err := utils.ParsePage(c)
+	categories, err := h.service.ListCategories(c.Request.Context(), userID)
 	if err != nil {
 		h.responder.Error(c, err)
 		return
 	}
-	values, total, err := h.service.List(c.Request.Context(), userID, c.Query("category_type"), page)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
+	responses := make([]CategoryResponse, 0, len(categories))
+	for _, category := range categories {
+		responses = append(responses, category.Response(h.location))
 	}
-	h.responder.Success(c, http.StatusOK, "ok", common.PageData{Items: values, Total: total, Limit: page.Limit, Offset: page.Offset})
-}
-
-func (h *Handler) get(c *gin.Context) {
-	userID, id, ok := h.parseID(c)
-	if !ok {
-		return
-	}
-	value, err := h.service.Get(c.Request.Context(), userID, id)
-	if err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(c, http.StatusOK, "ok", value)
-}
-
-func (h *Handler) delete(c *gin.Context) {
-	userID, id, ok := h.parseID(c)
-	if !ok {
-		return
-	}
-	if err := h.service.Delete(c.Request.Context(), userID, id); err != nil {
-		h.responder.Error(c, err)
-		return
-	}
-	h.responder.Success(c, http.StatusOK, "category deleted", nil)
+	h.responder.Success(c, http.StatusOK, "categories listed", responses)
 }
 
 func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
@@ -88,17 +67,4 @@ func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return userID, true
-}
-
-func (h *Handler) parseID(c *gin.Context) (userID, id uuid.UUID, ok bool) {
-	userID, ok = h.authenticatedUserID(c)
-	if !ok {
-		return uuid.Nil, uuid.Nil, false
-	}
-	id, err := utils.ParseUUID(c.Param("id"))
-	if err != nil {
-		h.responder.Error(c, err)
-		return uuid.Nil, uuid.Nil, false
-	}
-	return userID, id, true
 }

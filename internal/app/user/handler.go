@@ -42,7 +42,7 @@ func (h *Handler) register(c *gin.Context) {
 	h.responder.Success(
 		c, http.StatusCreated,
 		"user registered",
-		user.RegisterUserResponse(h.location),
+		user.Response(h.location),
 	)
 }
 

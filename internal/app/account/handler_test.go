@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/middleware"
@@ -33,7 +34,7 @@ func TestCreateUsesAuthenticatedUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	userID := uuid.New()
 	service := new(handlerService)
-	handler := NewHandler(service, common.NewResponder("test"))
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set(middleware.UserIDKey, userID)
@@ -58,7 +59,7 @@ func TestHandlerListAccountsUsesAuthenticatedUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	userID := uuid.New()
 	service := new(handlerService)
-	handler := NewHandler(service, common.NewResponder("test"))
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set(middleware.UserIDKey, userID)

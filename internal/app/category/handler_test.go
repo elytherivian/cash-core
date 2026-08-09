@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/middleware"
@@ -17,36 +18,35 @@ type handlerService struct {
 	listedUserID uuid.UUID
 }
 
-func (s *handlerService) Create(context.Context, uuid.UUID, CreateRequest) (*Category, error) {
+func (s *handlerService) CreateCategory(context.Context, uuid.UUID, CreateCategoryRequest) (*Category, error) {
 	return nil, nil
 }
 
-func (s *handlerService) Get(context.Context, uuid.UUID, uuid.UUID) (*Category, error) {
-	return nil, nil
-}
-
-func (s *handlerService) List(_ context.Context, userID uuid.UUID, _ string, _ common.Page) ([]Category, int64, error) {
+func (s *handlerService) ListCategories(_ context.Context, userID uuid.UUID) ([]Category, error) {
 	s.listedUserID = userID
-	return []Category{}, 0, nil
+	return []Category{}, nil
 }
 
-func (s *handlerService) Delete(context.Context, uuid.UUID, uuid.UUID) error { return nil }
-
-func TestListUsesAuthenticatedUserID(t *testing.T) {
+func TestListCategoriesUsesAuthenticatedUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	userID := uuid.New()
 	service := new(handlerService)
-	handler := NewHandler(service, common.NewResponder("test"))
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
 	engine := gin.New()
 	engine.Use(func(c *gin.Context) {
 		c.Set(middleware.UserIDKey, userID)
 		c.Next()
 	})
-	engine.GET("/api/v1/categories", handler.list)
-	response := httptest.NewRecorder()
-	engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/categories", nil))
+	engine.GET("/api/v1/categories/list", handler.listCategories)
 
-	if response.Code != http.StatusOK || service.listedUserID != userID {
-		t.Fatalf("status = %d, service user ID = %s; want %s", response.Code, service.listedUserID, userID)
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/categories/list", nil)
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if service.listedUserID != userID {
+		t.Fatalf("service user ID = %s, want %s", service.listedUserID, userID)
 	}
 }

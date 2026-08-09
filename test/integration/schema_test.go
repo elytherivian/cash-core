@@ -22,7 +22,7 @@ func TestGORMModelsMatchMigrationTables(t *testing.T) {
 	}{
 		{name: "user", value: &user.User{}, table: "users", required: []string{"id", "username", "password_hash"}},
 		{name: "account", value: &account.Account{}, table: "accounts", required: []string{"id", "user_id", "account_type", "account_name", "initial_balance"}},
-		{name: "category", value: &category.Category{}, table: "categories", required: []string{"id", "user_id", "category_type"}, forbidden: []string{"category_name", "type"}},
+		{name: "category", value: &category.Category{}, table: "categories", required: []string{"id", "user_id", "category_name"}, forbidden: []string{"category_type", "type"}},
 		{name: "transaction", value: &transactionapp.Transaction{}, table: "transactions", required: []string{"id", "user_id", "type", "amount", "account_id", "category_id", "occurred_at"}},
 	}
 

@@ -3,8 +3,7 @@ package category
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
+	"unicode/utf8"
 
 	"cash-core/internal/common"
 
@@ -12,48 +11,29 @@ import (
 )
 
 type Service interface {
-	Create(ctx context.Context, userID uuid.UUID, request CreateRequest) (*Category, error)
-	Get(ctx context.Context, userID, id uuid.UUID) (*Category, error)
-	List(ctx context.Context, userID uuid.UUID, transactionType string, page common.Page) ([]Category, int64, error)
-	Delete(ctx context.Context, userID, id uuid.UUID) error
+	CreateCategory(ctx context.Context, userID uuid.UUID, request CreateCategoryRequest) (*Category, error)
+	ListCategories(ctx context.Context, userID uuid.UUID) ([]Category, error)
 }
 
 type service struct{ repository Repository }
 
 func NewService(repository Repository) Service { return &service{repository: repository} }
 
-func (s *service) Create(ctx context.Context, userID uuid.UUID, request CreateRequest) (*Category, error) {
+func (s *service) CreateCategory(ctx context.Context, userID uuid.UUID, request CreateCategoryRequest) (*Category, error) {
 	request.Normalize()
-	if !request.CategoryType.Valid() {
-		return nil, fmt.Errorf("%w: category_type must be income or expense", common.ErrInvalidInput)
+	if length := utf8.RuneCountInString(request.CategoryName); length < 1 || length > 80 {
+		return nil, fmt.Errorf("%w: category_name length must be between 1 and 80", common.ErrInvalidInput)
 	}
 	category := &Category{
-		ID: uuid.New(), UserID: userID, CategoryType: request.CategoryType,
+		ID: uuid.New(), UserID: userID, CategoryName: request.CategoryName,
 		Lifecycle: common.Lifecycle{IsActive: true},
 	}
-	if err := s.repository.Create(ctx, category); err != nil {
+	if err := s.repository.CreateCategory(ctx, category); err != nil {
 		return nil, err
 	}
 	return category, nil
 }
 
-func (s *service) Get(ctx context.Context, userID, id uuid.UUID) (*Category, error) {
-	return s.repository.FindByID(ctx, userID, id)
-}
-
-func (s *service) List(ctx context.Context, userID uuid.UUID, categoryTypeValue string, page common.Page) ([]Category, int64, error) {
-	var categoryType *CategoryType
-	categoryTypeValue = strings.ToLower(strings.TrimSpace(categoryTypeValue))
-	if categoryTypeValue != "" {
-		parsed := CategoryType(categoryTypeValue)
-		if !parsed.Valid() {
-			return nil, 0, fmt.Errorf("%w: category_type must be income or expense", common.ErrInvalidInput)
-		}
-		categoryType = &parsed
-	}
-	return s.repository.ListByUser(ctx, userID, categoryType, page)
-}
-
-func (s *service) Delete(ctx context.Context, userID, id uuid.UUID) error {
-	return s.repository.Delete(ctx, userID, id, time.Now().UTC())
+func (s *service) ListCategories(ctx context.Context, userID uuid.UUID) ([]Category, error) {
+	return s.repository.ListCategoriesByUserID(ctx, userID)
 }

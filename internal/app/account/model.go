@@ -2,6 +2,7 @@ package account
 
 import (
 	"strings"
+	"time"
 
 	"cash-core/internal/common"
 
@@ -19,6 +20,22 @@ type Account struct {
 }
 
 func (Account) TableName() string { return "accounts" }
+
+type AccountResponse struct {
+	ID             uuid.UUID       `json:"id"`
+	UserID         uuid.UUID       `json:"user_id"`
+	AccountType    AccountType     `json:"account_type"`
+	AccountName    string          `json:"account_name"`
+	InitialBalance decimal.Decimal `json:"initial_balance"`
+	common.LifecycleResponse
+}
+
+func (a Account) Response(location *time.Location) AccountResponse {
+	return AccountResponse{
+		ID: a.ID, UserID: a.UserID, AccountType: a.AccountType, AccountName: a.AccountName,
+		InitialBalance: a.InitialBalance, LifecycleResponse: a.Lifecycle.Response(location),
+	}
+}
 
 type CreateAccountRequest struct {
 	AccountType    AccountType     `json:"account_type"`

@@ -38,7 +38,7 @@ cash-core/
 - 跨模块数据一致性依靠 service 编排、数据库事务或数据库约束完成。
 - 数据库 schema 只通过 `migrations` 变更，不使用 GORM `AutoMigrate`。
 
-当前 migration 的复合外键已经保证流水、账户、分类属于同一个用户，并保证流水类型和分类类型一致。
+当前 migration 的复合外键已经保证流水、账户和分类属于同一个用户。
 `internal/pkg/database.WithinTransaction` 可用于需要同时写入多个仓储的用例；`internal/pkg/middleware.Authentication` 提供了与 JWT/Session 实现无关的认证扩展接口，接入具体 TokenVerifier 后再挂到受保护路由组。
 
 ## 配置优先级
@@ -96,15 +96,10 @@ POST   /api/v1/auth/refresh
 POST   /api/v1/accounts/create
 GET    /api/v1/accounts/list
 
-POST   /api/v1/categories
-GET    /api/v1/categories?category_type=expense
-GET    /api/v1/categories/:id
-DELETE /api/v1/categories/:id
+POST   /api/v1/categories/create
+GET    /api/v1/categories/list
 
-POST   /api/v1/transactions
-GET    /api/v1/transactions?from=2026-08-01T00:00:00Z&to=2026-09-01T00:00:00Z
-GET    /api/v1/transactions/:id
-DELETE /api/v1/transactions/:id
+POST   /api/v1/transactions/create
 ```
 
 注册、删除、恢复、登录和刷新 token 不要求 JWT。账户、分类和流水接口必须携带：
@@ -114,6 +109,32 @@ Authorization: Bearer <access_token>
 ```
 
 用户身份只从验证通过的 JWT 中解析，客户端不再通过 URL 或请求体提交 `user_id`。
+
+分类表示具体的收支项目，例如 `日用品`、`工资`。创建分类时传入：
+
+```json
+{
+  "category_name": "日用品"
+}
+```
+
+这里之所以不使用 `category_type` 代替 `category_name`，是因为这个类别应该是人为定义，
+而不是硬编码到代码中，而满足不同用户的需求
+
+流水的 `type` 才表示该笔流水是 `income` 还是 `expense`；分类本身不再区分收入或支出。
+
+创建流水时必须同时指定账户和分类，例如“从微信 wechat1 支出 20 元购买零食”：
+
+```json
+{
+  "type": "expense",
+  "amount": "20",
+  "account_id": "<wechat1 的账户 ID>",
+  "category_id": "<零食的分类 ID>"
+}
+```
+
+`occurred_at` 可选；不传时服务端使用当前 UTC 时间。传入时可用于补记过去实际发生的流水。
 
 创建账户时，`account_type` 表示账户渠道或银行类型，目前仅支持 `WeChat`、`AliPay`、`BOC`；`account_name` 用于区分同一类型下的多个账户：
 
