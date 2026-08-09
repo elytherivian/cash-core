@@ -12,7 +12,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/cash /cash
-ENV DB_NAME=cash
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/cash"]

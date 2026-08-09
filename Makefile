@@ -9,10 +9,14 @@ COMPOSE := docker compose -f deployments/docker-compose.yml
 LOCAL_USER := $(shell id -u):$(shell id -g)
 
 # migrate 在 Compose 网络内通过服务名 postgres 连接数据库。
-# 如需连接其他数据库，可在命令行覆盖 MIGRATION_DATABASE_URL。
-MIGRATION_DATABASE_URL ?= postgres://cash:cash@postgres:5432/cash?sslmode=disable
+# 私有部署可通过环境变量覆盖这些值，或直接覆盖 MIGRATION_DATABASE_URL。
+DB_NAME ?= cash
+DB_USER ?= cash
+DB_PASSWORD ?= cash
+DB_SSLMODE ?= disable
+MIGRATION_DATABASE_URL ?= postgres://$(DB_USER):$(DB_PASSWORD)@postgres:5432/$(DB_NAME)?sslmode=$(DB_SSLMODE)
 
-.PHONY: help run build test test-race coverage fmt vet lint tidy db-up db-down migrate-up migrate-down migrate-create
+.PHONY: help run build test test-race coverage fmt vet lint tidy db-up db-down docker-up migrate-up migrate-down migrate-create
 
 help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -51,6 +55,9 @@ db-up: ## 使用 Docker 启动 PostgreSQL
 
 db-down: ## 停止 Docker 服务但保留数据库 volume
 	$(COMPOSE) down
+
+docker-up: db-up migrate-up ## 构建并在容器中启动 API
+	$(COMPOSE) --profile app up -d --build api
 
 migrate-up: ## 使用 Docker 执行所有尚未应用的数据库迁移
 	$(COMPOSE) run --rm migrate -path /migrations -database '$(MIGRATION_DATABASE_URL)' up

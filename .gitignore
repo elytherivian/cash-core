@@ -10,6 +10,13 @@ coverage.html
 .env
 .env.*
 !.env.example
+deployments/docker-compose.override.yml
+deployments/docker-compose.override.yaml
+
+# Private deployment secrets
+*.key
+*.pem
+secrets/
 
 # Editors and operating systems
 .idea/

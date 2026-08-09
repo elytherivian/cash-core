@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_DB: cash
-      POSTGRES_USER: cash
-      POSTGRES_PASSWORD: cash
+      POSTGRES_DB: ${DB_NAME:-cash}
+      POSTGRES_USER: ${DB_USER:-cash}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cash}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cash -d cash"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -22,29 +22,36 @@ services:
       context: ..
       dockerfile: Dockerfile
     environment:
-      APP_ENV: local
-      APP_NAME: cash
-      APP_VERSION: local
-      CONFIG_FILE: ""
-      JWT_ISSUER: cash-core
-      JWT_SECRET: local-development-only-jwt-secret-change-me
-      JWT_ACCESS_TOKEN_TTL: 15m
-      JWT_REFRESH_TOKEN_TTL: 720h
+      APP_ENV: ${APP_ENV:-local}
+      APP_NAME: ${APP_NAME:-cash}
+      APP_VERSION: ${APP_VERSION:-local}
+      API_TIMEZONE: ${API_TIMEZONE:-Asia/Shanghai}
+      JWT_ISSUER: ${JWT_ISSUER:-cash-core}
+      JWT_SECRET: ${JWT_SECRET:-local-development-only-jwt-secret-change-me}
+      JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
+      JWT_REFRESH_TOKEN_TTL: ${JWT_REFRESH_TOKEN_TTL:-720h}
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 8080
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: cash
-      DB_USER: cash
-      DB_PASSWORD: cash
-      DB_SSLMODE: disable
-      LOG_FORMAT: json
-      LOG_TIMEZONE: Asia/Shanghai
+      DB_NAME: ${DB_NAME:-cash}
+      DB_USER: ${DB_USER:-cash}
+      DB_PASSWORD: ${DB_PASSWORD:-cash}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-20}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-1h}
+      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-30m}
+      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5s}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_TIMEZONE: ${LOG_TIMEZONE:-Asia/Shanghai}
     ports:
-      - "8080:8080"
+      - "${API_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
 
   migrate:
     profiles: ["tools"]

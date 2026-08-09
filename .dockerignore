@@ -2,8 +2,6 @@
 .github
 .env
 .env.*
-!.env.example
-configs/config.yaml
 .idea
 .vscode
 bin
@@ -12,3 +10,13 @@ tmp
 coverage.out
 coverage.html
 *.log
+*.out
+*.test
+*.key
+*.pem
+deployments
+migrations
+scripts
+test
+README.md
+Makefile

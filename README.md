@@ -2,6 +2,8 @@
 
 cash-core 是一个使用 Gin、GORM 和 PostgreSQL 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
 
+完整的接口说明、认证方式和调用示例见 [API 文档](docs/API.md)。
+
 ## 目录结构
 
 ```text
@@ -17,16 +19,15 @@ cash-core/
 │   │       ├── service.go         # 业务规则与流程编排
 │   │       ├── repository.go      # GORM 数据访问
 │   │       └── model.go           # 数据模型与请求结构
-│   ├── common/                    # 统一响应、错误、生命周期、分页
+│   ├── common/                    # 统一响应、错误和生命周期
 │   ├── pkg/                       # 跨模块共享的基础组件
 │   │   ├── database/              # GORM/PostgreSQL 初始化
 │   │   ├── logger/                # slog 日志初始化
 │   │   ├── middleware/            # 请求 ID、日志、恢复、CORS 等
-│   │   └── utils/                 # JSON、UUID、分页工具
+│   │   └── utils/                 # JSON、UUID 等 HTTP 工具
 │   └── router/                    # 统一路由和模块依赖组装
 ├── migrations/                    # golang-migrate SQL 文件
 ├── deployments/                   # Docker Compose 部署文件
-├── scripts/                       # 迁移等开发脚本
 └── test/integration/              # 跨模块 HTTP 集成测试
 ```
 
@@ -65,6 +66,14 @@ make run
 
 第一次执行 `make migrate-up` 时 Docker 会自动拉取 migration 工具镜像。迁移容器通过 Compose 网络中的 `postgres` 服务名连接数据库，所以这里不能使用 `localhost`。
 
+也可以使用容器完整启动本项目：
+
+```bash
+make docker-up
+```
+
+该命令会启动 PostgreSQL、执行未应用的迁移，并构建和启动 API。API 默认监听 `http://localhost:8080`；PostgreSQL 仅绑定到 `127.0.0.1:5432`，不暴露给局域网。
+
 默认 PostgreSQL 配置：
 
 - 数据库：`cash`
@@ -73,6 +82,19 @@ make run
 - 地址：`localhost:5432`
 
 这些默认值只能用于本地开发。
+
+## 私有部署
+
+Compose 配置可通过环境变量覆盖应用与数据库配置，例如 `APP_ENV`、`JWT_SECRET`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`、`API_HOST_PORT` 和 `POSTGRES_HOST_PORT`。生产环境至少应设置：
+
+```bash
+export APP_ENV=production
+export JWT_SECRET="$(openssl rand -base64 48)"
+export DB_PASSWORD="$(openssl rand -hex 32)"
+make docker-up
+```
+
+`DB_PASSWORD` 使用十六进制随机值可以直接用于 Compose 和迁移连接串。如果必须使用包含 URL 保留字符的密码，请显式设置 URL 编码后的 `MIGRATION_DATABASE_URL`。不要提交 `.env`、私钥或 `deployments/docker-compose.override.yml`；这些文件已被 Git 忽略。私有部署不依赖 GitHub Actions，仓库中的 CI 工作流已移除。
 
 ## API
 
@@ -201,6 +223,7 @@ make vet              # 静态检查
 make db-up             # 启动 PostgreSQL
 make migrate-up       # 执行数据库迁移
 make migrate-down     # 回退一个迁移版本
+make docker-up        # 构建并在容器中启动 API
 ```
 
 ## 开发新模块
