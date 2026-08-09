@@ -12,6 +12,7 @@ import (
 
 type Service interface {
 	CreateTransaction(ctx context.Context, userID uuid.UUID, request CreateTransactionRequest) (*Transaction, error)
+	ListTransactions(ctx context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error)
 }
 
 type service struct{ repository Repository }
@@ -41,4 +42,11 @@ func (s *service) CreateTransaction(ctx context.Context, userID uuid.UUID, reque
 		return nil, err
 	}
 	return transaction, nil
+}
+
+func (s *service) ListTransactions(ctx context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error) {
+	if request.AccountID == nil && request.CategoryID == nil {
+		return nil, fmt.Errorf("%w: account_id or category_id is required", common.ErrInvalidInput)
+	}
+	return s.repository.ListTransactions(ctx, userID, request)
 }

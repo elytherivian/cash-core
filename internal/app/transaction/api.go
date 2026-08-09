@@ -22,5 +22,8 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, lo
 
 		// /api/v1/transactions/create
 		routes.POST("/create", handler.createTransaction)
+		routes.GET("/getByAccountID", handler.getByAccount)
+		routes.GET("/getByCategoryID", handler.getByCategory)
+		routes.GET("/getByAccountIDAndCategoryID", handler.getByAccountAndCategory)
 	}
 }

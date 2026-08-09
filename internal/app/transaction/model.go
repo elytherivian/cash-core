@@ -65,3 +65,8 @@ func (r *CreateTransactionRequest) Normalize() {
 	r.Type = TransactionType(strings.ToLower(strings.TrimSpace(string(r.Type))))
 	r.OccurredAt = r.OccurredAt.UTC()
 }
+
+type ListTransactionsRequest struct {
+	AccountID  *uuid.UUID
+	CategoryID *uuid.UUID
+}

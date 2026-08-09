@@ -11,11 +11,19 @@ import (
 
 type serviceRepositoryStub struct {
 	createdTransaction *Transaction
+	listRequest        ListTransactionsRequest
+	listedUserID       uuid.UUID
 }
 
 func (r *serviceRepositoryStub) CreateTransaction(_ context.Context, transaction *Transaction) error {
 	r.createdTransaction = transaction
 	return nil
+}
+
+func (r *serviceRepositoryStub) ListTransactions(_ context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error) {
+	r.listedUserID = userID
+	r.listRequest = request
+	return []Transaction{}, nil
 }
 
 func TestCreateTransactionStoresAccountAndCategory(t *testing.T) {
@@ -57,5 +65,11 @@ func TestCreateTransactionUsesCurrentTimeWhenOccurredAtIsOmitted(t *testing.T) {
 	}
 	if createdTransaction.OccurredAt.Before(before) || createdTransaction.OccurredAt.After(after) {
 		t.Fatalf("OccurredAt = %s, want a time between %s and %s", createdTransaction.OccurredAt, before, after)
+	}
+}
+
+func TestListTransactionsRequiresAtLeastOneFilter(t *testing.T) {
+	if _, err := NewService(new(serviceRepositoryStub)).ListTransactions(context.Background(), uuid.New(), ListTransactionsRequest{}); err == nil {
+		t.Fatal("ListTransactions() error = nil, want invalid input")
 	}
 }

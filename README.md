@@ -100,6 +100,9 @@ POST   /api/v1/categories/create
 GET    /api/v1/categories/list
 
 POST   /api/v1/transactions/create
+GET    /api/v1/transactions/getByAccountID?account_id=<account_id>
+GET    /api/v1/transactions/getByCategoryID?category_id=<category_id>
+GET    /api/v1/transactions/getByAccountIDAndCategoryID?account_id=<account_id>&category_id=<category_id>
 ```
 
 注册、删除、恢复、登录和刷新 token 不要求 JWT。账户、分类和流水接口必须携带：
@@ -135,6 +138,8 @@ Authorization: Bearer <access_token>
 ```
 
 `occurred_at` 可选；不传时服务端使用当前 UTC 时间。传入时可用于补记过去实际发生的流水。
+
+三个流水查询接口会返回全部匹配的有效流水，并按 `occurred_at` 正序排列，供客户端计算总收入、总支出和账户余额。
 
 创建账户时，`account_type` 表示账户渠道或银行类型，目前仅支持 `WeChat`、`AliPay`、`BOC`；`account_name` 用于区分同一类型下的多个账户：
 
