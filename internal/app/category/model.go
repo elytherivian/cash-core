@@ -2,34 +2,39 @@ package category
 
 import (
 	"strings"
+	"time"
 
 	"cash-core/internal/common"
 
 	"github.com/google/uuid"
 )
 
-type CategoryType string
-
-const (
-	Income  CategoryType = "income"
-	Expense CategoryType = "expense"
-)
-
-func (t CategoryType) Valid() bool { return t == Income || t == Expense }
-
 type Category struct {
-	ID           uuid.UUID    `gorm:"column:id;type:uuid;primaryKey" json:"id"`
-	UserID       uuid.UUID    `gorm:"column:user_id;type:uuid;not null" json:"user_id"`
-	CategoryType CategoryType `gorm:"column:category_type;size:20;not null" json:"category_type"`
+	ID           uuid.UUID `gorm:"column:id;type:uuid;primaryKey" json:"id"`
+	UserID       uuid.UUID `gorm:"column:user_id;type:uuid;not null" json:"user_id"`
+	CategoryName string    `gorm:"column:category_name;size:80;not null" json:"category_name"`
 	common.Lifecycle
 }
 
 func (Category) TableName() string { return "categories" }
 
-type CreateRequest struct {
-	CategoryType CategoryType `json:"category_type"`
+type CategoryResponse struct {
+	ID           uuid.UUID `json:"id"`
+	UserID       uuid.UUID `json:"user_id"`
+	CategoryName string    `json:"category_name"`
+	common.LifecycleResponse
 }
 
-func (r *CreateRequest) Normalize() {
-	r.CategoryType = CategoryType(strings.ToLower(strings.TrimSpace(string(r.CategoryType))))
+func (c Category) Response(location *time.Location) CategoryResponse {
+	return CategoryResponse{
+		ID: c.ID, UserID: c.UserID, CategoryName: c.CategoryName, LifecycleResponse: c.Lifecycle.Response(location),
+	}
+}
+
+type CreateCategoryRequest struct {
+	CategoryName string `json:"category_name"`
+}
+
+func (r *CreateCategoryRequest) Normalize() {
+	r.CategoryName = strings.TrimSpace(r.CategoryName)
 }

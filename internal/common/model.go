@@ -9,6 +9,27 @@ type Lifecycle struct {
 	DeletedAt *time.Time `gorm:"column:deleted_at" json:"deleted_at,omitempty"`
 }
 
+type LifecycleResponse struct {
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	IsActive  bool       `json:"is_active"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+}
+
+func (l Lifecycle) Response(location *time.Location) LifecycleResponse {
+	if location == nil {
+		location = time.UTC
+	}
+	response := LifecycleResponse{
+		CreatedAt: l.CreatedAt.In(location), UpdatedAt: l.UpdatedAt.In(location), IsActive: l.IsActive,
+	}
+	if l.DeletedAt != nil {
+		deletedAt := l.DeletedAt.In(location)
+		response.DeletedAt = &deletedAt
+	}
+	return response
+}
+
 type Page struct {
 	Limit  int
 	Offset int

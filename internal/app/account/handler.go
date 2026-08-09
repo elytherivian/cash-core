@@ -2,6 +2,7 @@ package account
 
 import (
 	"net/http"
+	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/middleware"
@@ -14,10 +15,14 @@ import (
 type Handler struct {
 	service   Service
 	responder common.Responder
+	location  *time.Location
 }
 
-func NewHandler(service Service, responder common.Responder) *Handler {
-	return &Handler{service: service, responder: responder}
+func NewHandler(service Service, responder common.Responder, location *time.Location) *Handler {
+	if location == nil {
+		location = time.UTC
+	}
+	return &Handler{service: service, responder: responder, location: location}
 }
 
 func (h *Handler) create(c *gin.Context) {
@@ -35,7 +40,7 @@ func (h *Handler) create(c *gin.Context) {
 		h.responder.Error(c, err)
 		return
 	}
-	h.responder.Success(c, http.StatusCreated, "account created", createdAccount)
+	h.responder.Success(c, http.StatusCreated, "account created", createdAccount.Response(h.location))
 }
 
 func (h *Handler) listAccounts(c *gin.Context) {
@@ -48,7 +53,11 @@ func (h *Handler) listAccounts(c *gin.Context) {
 		h.responder.Error(c, err)
 		return
 	}
-	h.responder.Success(c, http.StatusOK, "accounts listed", accounts)
+	responses := make([]AccountResponse, 0, len(accounts))
+	for _, account := range accounts {
+		responses = append(responses, account.Response(h.location))
+	}
+	h.responder.Success(c, http.StatusOK, "accounts listed", responses)
 }
 
 func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {

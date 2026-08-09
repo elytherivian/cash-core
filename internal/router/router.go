@@ -48,10 +48,11 @@ func New(cfg config.Config, db *gorm.DB, pinger Pinger, log *slog.Logger) *gin.E
 
 	// 注册 app 路由
 	tokenManager := auth.NewManager(cfg.Auth, auth.NewGORMUserStateStore(db))
-	user.RegisterAPI(engine, db, responder, cfg.API.Location(), tokenManager)
-	account.RegisterAPI(engine, db, responder, tokenManager)
-	category.RegisterAPI(engine, db, responder, tokenManager)
-	transaction.RegisterAPI(engine, db, responder, tokenManager)
+	location := cfg.API.Location()
+	user.RegisterAPI(engine, db, responder, location, tokenManager)
+	account.RegisterAPI(engine, db, responder, location, tokenManager)
+	category.RegisterAPI(engine, db, responder, location, tokenManager)
+	transaction.RegisterAPI(engine, db, responder, location, tokenManager)
 
 	// 注册全局路由 404 Not Found 405 Method Not Allowed
 	// 处理未注册的路由和方法 返回错误信息

@@ -32,7 +32,28 @@ type Transaction struct {
 
 func (Transaction) TableName() string { return "transactions" }
 
-type CreateRequest struct {
+type TransactionResponse struct {
+	ID         uuid.UUID       `json:"id"`
+	UserID     uuid.UUID       `json:"user_id"`
+	Type       TransactionType `json:"type"`
+	Amount     decimal.Decimal `json:"amount"`
+	AccountID  uuid.UUID       `json:"account_id"`
+	CategoryID uuid.UUID       `json:"category_id"`
+	OccurredAt time.Time       `json:"occurred_at"`
+	common.LifecycleResponse
+}
+
+func (t Transaction) Response(location *time.Location) TransactionResponse {
+	if location == nil {
+		location = time.UTC
+	}
+	return TransactionResponse{
+		ID: t.ID, UserID: t.UserID, Type: t.Type, Amount: t.Amount, AccountID: t.AccountID,
+		CategoryID: t.CategoryID, OccurredAt: t.OccurredAt.In(location), LifecycleResponse: t.Lifecycle.Response(location),
+	}
+}
+
+type CreateTransactionRequest struct {
 	Type       TransactionType `json:"type"`
 	Amount     decimal.Decimal `json:"amount"`
 	AccountID  uuid.UUID       `json:"account_id"`
@@ -40,13 +61,7 @@ type CreateRequest struct {
 	OccurredAt time.Time       `json:"occurred_at"`
 }
 
-func (r *CreateRequest) Normalize() {
+func (r *CreateTransactionRequest) Normalize() {
 	r.Type = TransactionType(strings.ToLower(strings.TrimSpace(string(r.Type))))
 	r.OccurredAt = r.OccurredAt.UTC()
-}
-
-type Filter struct {
-	From *time.Time
-	To   *time.Time
-	Page common.Page
 }

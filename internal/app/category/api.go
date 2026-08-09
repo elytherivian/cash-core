@@ -1,6 +1,8 @@
 package category
 
 import (
+	"time"
+
 	"cash-core/internal/common"
 	"cash-core/internal/pkg/middleware"
 
@@ -10,8 +12,8 @@ import (
 
 const apiVersion = "/api/v1"
 
-func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, verifier middleware.TokenVerifier) {
-	handler := NewHandler(NewService(NewRepository(db)), responder)
+func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, location *time.Location, verifier middleware.TokenVerifier) {
+	handler := NewHandler(NewService(NewRepository(db)), responder, location)
 	api := engine.Group(apiVersion)
 
 	{
@@ -19,9 +21,7 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, ve
 		routes.Use(middleware.Authentication(verifier, responder))
 
 		// /api/v1/categories
-		routes.POST("", handler.create)
-		routes.GET("", handler.list)
-		routes.GET("/:id", handler.get)
-		routes.DELETE("/:id", handler.delete)
+		routes.POST("/create", handler.createCategory)
+		routes.GET("/list", handler.listCategories)
 	}
 }
