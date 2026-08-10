@@ -96,6 +96,40 @@ make docker-up
 
 `DB_PASSWORD` 使用十六进制随机值可以直接用于 Compose 和迁移连接串。如果必须使用包含 URL 保留字符的密码，请显式设置 URL 编码后的 `MIGRATION_DATABASE_URL`。不要提交 `.env`、私钥或 `deployments/docker-compose.override.yml`；这些文件已被 Git 忽略。私有部署不依赖 GitHub Actions，仓库中的 CI 工作流已移除。
 
+### VPS + Cloudflare + Caddy
+
+仓库已经提供 Caddy 反向代理配置。Caddy 是唯一对公网暴露的容器：它占用 VPS 的 `80/tcp`、`443/tcp` 和 `443/udp`，API 仅绑定宿主机回环地址，PostgreSQL 仅供 Docker 网络访问。
+
+假设 Cloudflare DNS 中的橙云 A 记录为 `dash-rn.elytherivian.top -> <VPS IPv4>`，在 VPS 上执行：
+
+```bash
+git clone <你的仓库地址> cash-core
+cd cash-core
+cp deployments/.env.production.example .env
+chmod 600 .env
+# 编辑 .env：填写 ACME_EMAIL，并替换 JWT_SECRET 和 DB_PASSWORD。
+openssl rand -base64 48
+openssl rand -hex 32
+
+# 先启动数据库、执行迁移，再构建 API 与 Caddy。
+set -a && . ./.env && set +a
+docker compose --env-file .env -f deployments/docker-compose.yml up -d postgres
+docker compose --env-file .env -f deployments/docker-compose.yml run --rm migrate \
+  -path /migrations \
+  -database "postgres://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME?sslmode=disable" up
+docker compose --env-file .env -f deployments/docker-compose.yml --profile app --profile proxy up -d --build
+```
+
+Cloudflare 的 SSL/TLS 模式应改为 **Full (strict)**。Caddy 会通过 HTTP-01 自动取得受信任的源站证书；Cloudflare 的橙云代理不会阻止该验证。VPS 防火墙或云厂商安全组必须放行 `80/tcp` 与 `443/tcp`；不要公开 `5432` 或 `8080`。首次完成后，用以下命令验证：
+
+```bash
+curl -i https://dash-rn.elytherivian.top/health/live
+curl -i https://dash-rn.elytherivian.top/health/ready
+docker compose --env-file .env -f deployments/docker-compose.yml logs -f caddy api
+```
+
+本地 App 的 API 基地址设置为 `https://dash-rn.elytherivian.top`，接口路径保持原样，例如 `https://dash-rn.elytherivian.top/api/v1/auth/login`。桌面端和移动端直接使用 HTTPS，不需要加入端口号，也不需要配置 CORS；若后续增加 Web 前端，再将其完整 HTTPS 域名加入 `HTTP_ALLOWED_ORIGINS`。
+
 ## API
 
 系统端点：

@@ -10,6 +10,7 @@ coverage.html
 .env
 .env.*
 !.env.example
+!deployments/.env.production.example
 deployments/docker-compose.override.yml
 deployments/docker-compose.override.yaml
 

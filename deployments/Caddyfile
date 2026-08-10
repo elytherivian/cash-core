@@ -1,0 +1,9 @@
+{
+	# Caddy 自动申请并续期 Let's Encrypt 证书；请在 .env 中设置 ACME_EMAIL。
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:8080
+}

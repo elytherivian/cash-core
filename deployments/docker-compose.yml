@@ -32,6 +32,7 @@ services:
       JWT_REFRESH_TOKEN_TTL: ${JWT_REFRESH_TOKEN_TTL:-720h}
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 8080
+      HTTP_ALLOWED_ORIGINS: ${HTTP_ALLOWED_ORIGINS:-*}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-cash}
@@ -47,7 +48,8 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_TIMEZONE: ${LOG_TIMEZONE:-Asia/Shanghai}
     ports:
-      - "${API_HOST_PORT:-8080}:8080"
+      # 仅用于本机调试。生产流量应只经由 caddy 服务进入 API。
+      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,5 +65,26 @@ services:
       postgres:
         condition: service_healthy
 
+  caddy:
+    profiles: ["proxy"]
+    image: caddy:2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:-dash-rn.elytherivian.top}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
