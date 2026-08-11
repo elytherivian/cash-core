@@ -67,18 +67,18 @@ make run
 make docker-up
 ```
 
-该命令会构建并启动 API；SQLite 数据文件保存在 Docker 命名卷中。API 默认监听 `http://localhost:8080`，不再运行独立的数据库服务。
+该命令会构建并启动 API；容器仅加入全局 Caddy 的内部 Docker 网络，不映射任何宿主机端口。
 
 默认 SQLite 配置：
 
 - 本机运行：`data/cash.db`
-- Docker 运行：Docker 命名卷 `sqlite_data` 中的 `/data/cash.db`
+- Docker 运行：`SQLITE_DATA_DIR` 指定的宿主机目录中的 `cash.db`；生产默认是 `/root/cash-core/data/cash.db`
 
 SQLite 适合单机、低并发的 VPS 部署；同一数据库文件不应放在网络文件系统上，也不应同时由多个 API 容器写入。
 
 ## 私有部署
 
-Compose 配置可通过环境变量覆盖应用配置，例如 `APP_ENV`、`JWT_SECRET` 与 `API_HOST_PORT`。SQLite 连接数固定为 1，避免单文件数据库的并发写入锁竞争。生产环境至少应设置：
+Compose 配置可通过环境变量覆盖应用配置，例如 `APP_ENV`、`JWT_SECRET`、`SQLITE_DATA_DIR` 与 `CADDY_PROXY_NETWORK`。SQLite 连接数固定为 1，避免单文件数据库的并发写入锁竞争。生产环境至少应设置：
 
 ```bash
 export APP_ENV=production
@@ -90,32 +90,40 @@ SQLite 不使用数据库账号、密码或端口。不要提交 `.env`、私钥
 
 ### VPS + Cloudflare + Caddy
 
-仓库已经提供 Caddy 反向代理配置。Caddy 是唯一对公网暴露的容器：它占用 VPS 的 `80/tcp`、`443/tcp` 和 `443/udp`，API 仅绑定宿主机回环地址；SQLite 数据保存在 Docker 命名卷中。
+本项目不再运行自己的 Caddy。API 会加入 `/root/caddy` 管理的外部 `caddy_proxy` 网络，只有全局 Caddy 对公网暴露 `80/tcp`、`443/tcp` 和 `443/udp`。部署前必须先由全局 Caddy 项目创建该网络；本项目不会创建它。SQLite 数据直接保存在 VPS 的项目目录，方便备份和迁移。
 
-假设 Cloudflare DNS 中的橙云 A 记录为 `dash-rn.elytherivian.top -> <VPS IPv4>`，在 VPS 上执行：
+假设 Cloudflare DNS 中的橙云 A 记录为 `api.example.com -> <VPS IPv4>`，在 VPS 上执行：
 
 ```bash
 git clone <你的仓库地址> cash-core
 cd cash-core
 cp deployments/.env.production.example .env
 chmod 600 .env
-# 编辑 .env：填写 ACME_EMAIL，并替换 JWT_SECRET。
+# 编辑 .env：替换 JWT_SECRET；按实际项目目录调整 SQLITE_DATA_DIR。
 openssl rand -base64 48
 
-# 构建并启动 API 与 Caddy；SQLite 会自动初始化。
+# 为容器内 nonroot 用户创建可写的 SQLite 数据目录。
+install -d -o 65532 -g 65532 -m 750 /root/cash-core/data
+
+# 构建并启动 API；SQLite 会自动初始化。
 set -a && . ./.env && set +a
-docker compose --env-file .env -f deployments/docker-compose.yml --profile app --profile proxy up -d --build
+docker compose --env-file .env -f deployments/docker-compose.yml up -d --build
+
+# 添加全局 Caddy 的站点路由；将示例域名改成你的实际子域名。
+cp deployments/caddy/cash-core.caddy.example /root/caddy/sites/api.example.com.caddy
+docker compose -f /root/caddy/compose.yaml exec caddy \
+  caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
-Cloudflare 的 SSL/TLS 模式应改为 **Full (strict)**。Caddy 会通过 HTTP-01 自动取得受信任的源站证书；Cloudflare 的橙云代理不会阻止该验证。VPS 防火墙或云厂商安全组必须放行 `80/tcp` 与 `443/tcp`；不要公开 `8080`。首次完成后，用以下命令验证：
+Cloudflare 中应为该子域名创建指向 VPS 的橙云 A 记录，SSL/TLS 模式设为 **Full (strict)**。全局 Caddy 会自动取得证书；VPS 防火墙或云厂商安全组只需放行 `80/tcp` 与 `443/tcp`，不要公开 `8080`。首次完成后，用以下命令验证：
 
 ```bash
-curl -i https://dash-rn.elytherivian.top/health/live
-curl -i https://dash-rn.elytherivian.top/health/ready
-docker compose --env-file .env -f deployments/docker-compose.yml logs -f caddy api
+curl -i https://api.example.com/health/live
+curl -i https://api.example.com/health/ready
+docker compose --env-file .env -f deployments/docker-compose.yml logs -f api
 ```
 
-本地 App 的 API 基地址设置为 `https://dash-rn.elytherivian.top`，接口路径保持原样，例如 `https://dash-rn.elytherivian.top/api/v1/auth/login`。桌面端和移动端直接使用 HTTPS，不需要加入端口号，也不需要配置 CORS；若后续增加 Web 前端，再将其完整 HTTPS 域名加入 `HTTP_ALLOWED_ORIGINS`。
+本地 App 的 API 基地址设置为 `https://api.example.com`，接口路径保持原样，例如 `https://api.example.com/api/v1/auth/login`。桌面端和移动端直接使用 HTTPS，不需要加入端口号，也不需要配置 CORS；若后续增加 Web 前端，再将其完整 HTTPS 域名加入 `HTTP_ALLOWED_ORIGINS`。
 
 ## API
 

@@ -1,6 +1,5 @@
 services:
   api:
-    profiles: ["app"]
     build:
       context: ..
       dockerfile: Dockerfile
@@ -20,33 +19,17 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_TIMEZONE: ${LOG_TIMEZONE:-Asia/Shanghai}
-    ports:
-      # 仅用于本机调试。生产流量应只经由 caddy 服务进入 API。
-      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
+    expose:
+      - "8080"
     volumes:
-      - sqlite_data:/data
+      - ${SQLITE_DATA_DIR:-../data}:/data
+    networks:
+      caddy_proxy:
+        aliases:
+          - cash-core-api
     restart: unless-stopped
 
-  caddy:
-    profiles: ["proxy"]
-    image: caddy:2-alpine
-    environment:
-      DOMAIN: ${DOMAIN:-dash-rn.elytherivian.top}
-      ACME_EMAIL: ${ACME_EMAIL}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      api:
-        condition: service_started
-    restart: unless-stopped
-
-volumes:
-  sqlite_data:
-  caddy_data:
-  caddy_config:
+networks:
+  caddy_proxy:
+    external: true
+    name: ${CADDY_PROXY_NETWORK:-caddy_proxy}

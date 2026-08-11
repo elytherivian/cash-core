@@ -45,4 +45,4 @@ docker-down: ## 停止 Docker 服务但保留 SQLite 数据卷
 	$(COMPOSE) down
 
 docker-up: ## 构建并在容器中启动 API
-	$(COMPOSE) --profile app up -d --build api
+	$(COMPOSE) up -d --build api
