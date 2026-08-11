@@ -55,6 +55,9 @@ func run() error {
 			slog.Error("close database", "error", err)
 		}
 	}()
+	if err := database.InitializeSchema(connection.GORM); err != nil {
+		return err
+	}
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Address(),

@@ -6,13 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
 	"cash-core/internal/common"
 	"cash-core/internal/config"
 
-	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -23,32 +24,31 @@ type Connection struct {
 }
 
 func Open(ctx context.Context, cfg config.Database, log *slog.Logger, logLevel string) (*Connection, error) {
-	db, err := gorm.Open(postgres.New(postgres.Config{
-		DSN:                  cfg.DSN(),
-		PreferSimpleProtocol: true,
-	}), &gorm.Config{
+	if directory := cfg.Directory(); directory != "" {
+		if err := os.MkdirAll(directory, 0o750); err != nil {
+			return nil, fmt.Errorf("create SQLite database directory: %w", err)
+		}
+	}
+	db, err := gorm.Open(sqlite.Open(cfg.DSN()), &gorm.Config{
 		Logger:         newGORMLogger(log, logLevel),
 		TranslateError: true,
 		NowFunc:        func() time.Time { return time.Now().UTC() },
 	})
 	if err != nil {
-		return nil, fmt.Errorf("open PostgreSQL: %w", err)
+		return nil, fmt.Errorf("open SQLite: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("get database connection pool: %w", err)
 	}
-	sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
-	sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
-	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
-	pingContext, cancel := context.WithTimeout(ctx, cfg.ConnectTimeout)
-	defer cancel()
-	if err := sqlDB.PingContext(pingContext); err != nil {
+	// SQLite permits only one writer. A single shared connection avoids avoidable
+	// "database is locked" errors while WAL mode still allows readers to proceed.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	if err := sqlDB.PingContext(ctx); err != nil {
 		_ = sqlDB.Close()
-		return nil, fmt.Errorf("ping PostgreSQL: %w", err)
+		return nil, fmt.Errorf("ping SQLite: %w", err)
 	}
 	return &Connection{GORM: db, SQL: sqlDB}, nil
 }

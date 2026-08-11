@@ -11,8 +11,19 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(): %v", err)
 	}
-	if cfg.App.Name != "cash" || cfg.Database.Name != "cash" || cfg.HTTP.Port != 8080 {
+	if cfg.App.Name != "cash" || cfg.Database.Path != "data/cash.db" || cfg.HTTP.Port != 8080 {
 		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadUsesSQLitePathOverride(t *testing.T) {
+	t.Setenv("DB_PATH", "/var/lib/cash/cash.db")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.Database.Path != "/var/lib/cash/cash.db" {
+		t.Fatalf("database path=%q, want overridden path", cfg.Database.Path)
 	}
 }
 

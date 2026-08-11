@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-func TestGORMModelsMatchMigrationTables(t *testing.T) {
+func TestGORMModelsMatchSchemaTables(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     any

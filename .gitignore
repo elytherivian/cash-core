@@ -26,4 +26,5 @@ secrets/
 
 # Runtime data
 /tmp/
+/data/
 *.log

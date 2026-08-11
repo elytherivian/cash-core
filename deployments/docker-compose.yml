@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: ${DB_NAME:-cash}
-      POSTGRES_USER: ${DB_USER:-cash}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-cash}
-    ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    restart: unless-stopped
-
   api:
     profiles: ["app"]
     build:
@@ -33,37 +16,16 @@ services:
       HTTP_HOST: 0.0.0.0
       HTTP_PORT: 8080
       HTTP_ALLOWED_ORIGINS: ${HTTP_ALLOWED_ORIGINS:-*}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-cash}
-      DB_USER: ${DB_USER:-cash}
-      DB_PASSWORD: ${DB_PASSWORD:-cash}
-      DB_SSLMODE: ${DB_SSLMODE:-disable}
-      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-20}
-      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-5}
-      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-1h}
-      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-30m}
-      DB_CONNECT_TIMEOUT: ${DB_CONNECT_TIMEOUT:-5s}
+      DB_PATH: /data/cash.db
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_FORMAT: ${LOG_FORMAT:-json}
       LOG_TIMEZONE: ${LOG_TIMEZONE:-Asia/Shanghai}
     ports:
       # 仅用于本机调试。生产流量应只经由 caddy 服务进入 API。
       - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  migrate:
-    profiles: ["tools"]
-    image: migrate/migrate:v4.19.1
-    entrypoint: ["migrate"]
     volumes:
-      - ../migrations:/migrations
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - sqlite_data:/data
+    restart: unless-stopped
 
   caddy:
     profiles: ["proxy"]
@@ -85,6 +47,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  sqlite_data:
   caddy_data:
   caddy_config:

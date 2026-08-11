@@ -1,6 +1,6 @@
 # cash-core
 
-cash-core 是一个使用 Gin、GORM 和 PostgreSQL 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
+cash-core 是一个使用 Gin、GORM 和 SQLite 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
 
 完整的接口说明、认证方式和调用示例见 [API 文档](docs/API.md)。
 
@@ -21,12 +21,11 @@ cash-core/
 │   │       └── model.go           # 数据模型与请求结构
 │   ├── common/                    # 统一响应、错误和生命周期
 │   ├── pkg/                       # 跨模块共享的基础组件
-│   │   ├── database/              # GORM/PostgreSQL 初始化
+│   │   ├── database/              # GORM/SQLite 初始化
 │   │   ├── logger/                # slog 日志初始化
 │   │   ├── middleware/            # 请求 ID、日志、恢复、CORS 等
 │   │   └── utils/                 # JSON、UUID 等 HTTP 工具
 │   └── router/                    # 统一路由和模块依赖组装
-├── migrations/                    # golang-migrate SQL 文件
 ├── deployments/                   # Docker Compose 部署文件
 └── test/integration/              # 跨模块 HTTP 集成测试
 ```
@@ -37,10 +36,10 @@ cash-core/
 - 各业务模块只能依赖标准库、第三方库、`internal/common` 和 `internal/pkg`。
 - `internal/router` 是统一组装入口，可以导入所有业务模块。
 - 跨模块数据一致性依靠 service 编排、数据库事务或数据库约束完成。
-- 数据库 schema 只通过 `migrations` 变更，不使用 GORM `AutoMigrate`。
+- SQLite schema 会在应用启动时自动初始化；初始化是幂等的，不需要单独执行迁移命令。
 
-当前 migration 的复合外键已经保证流水、账户和分类属于同一个用户。
-`internal/pkg/database.WithinTransaction` 可用于需要同时写入多个仓储的用例；`internal/pkg/middleware.Authentication` 提供了与 JWT/Session 实现无关的认证扩展接口，接入具体 TokenVerifier 后再挂到受保护路由组。
+SQLite 的复合外键保证流水、账户和分类属于同一个用户。
+`internal/pkg/middleware.Authentication` 提供了与 JWT/Session 实现无关的认证扩展接口，接入具体 TokenVerifier 后再挂到受保护路由组。
 
 ## 配置优先级
 
@@ -50,21 +49,17 @@ cash-core/
 cp .env.example .env
 ```
 
-`make run` 会自动加载根目录的 `.env`；直接执行 `go run` 时需要自行导出环境变量。生产环境应使用环境变量或密钥管理系统覆盖数据库密码。
+`make run` 会自动加载根目录的 `.env`；直接执行 `go run` 时需要自行导出环境变量。`DB_PATH` 指定 SQLite 文件路径，父目录不存在时应用会自动创建。
 
 `API_TIMEZONE` 控制 API 响应中时间字段的展示时区（默认 `Asia/Shanghai`，使用 IANA 时区名）。数据库仍统一以 UTC 存储，避免因部署地区改变而影响数据语义。
 
 ## 本地启动
 
-需要安装 Go 1.25 和 Docker。数据库迁移通过 Compose 中的 `migrate/migrate` 容器执行，不要求宿主机安装 `golang-migrate`。
+需要安装 Go 1.25。SQLite 文件和 schema 会在应用首次启动时自动创建。
 
 ```bash
-make db-up
-make migrate-up
 make run
 ```
-
-第一次执行 `make migrate-up` 时 Docker 会自动拉取 migration 工具镜像。迁移容器通过 Compose 网络中的 `postgres` 服务名连接数据库，所以这里不能使用 `localhost`。
 
 也可以使用容器完整启动本项目：
 
@@ -72,33 +67,30 @@ make run
 make docker-up
 ```
 
-该命令会启动 PostgreSQL、执行未应用的迁移，并构建和启动 API。API 默认监听 `http://localhost:8080`；PostgreSQL 仅绑定到 `127.0.0.1:5432`，不暴露给局域网。
+该命令会构建并启动 API；SQLite 数据文件保存在 Docker 命名卷中。API 默认监听 `http://localhost:8080`，不再运行独立的数据库服务。
 
-默认 PostgreSQL 配置：
+默认 SQLite 配置：
 
-- 数据库：`cash`
-- 用户：`cash`
-- 密码：`cash`
-- 地址：`localhost:5432`
+- 本机运行：`data/cash.db`
+- Docker 运行：Docker 命名卷 `sqlite_data` 中的 `/data/cash.db`
 
-这些默认值只能用于本地开发。
+SQLite 适合单机、低并发的 VPS 部署；同一数据库文件不应放在网络文件系统上，也不应同时由多个 API 容器写入。
 
 ## 私有部署
 
-Compose 配置可通过环境变量覆盖应用与数据库配置，例如 `APP_ENV`、`JWT_SECRET`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`、`API_HOST_PORT` 和 `POSTGRES_HOST_PORT`。生产环境至少应设置：
+Compose 配置可通过环境变量覆盖应用配置，例如 `APP_ENV`、`JWT_SECRET` 与 `API_HOST_PORT`。SQLite 连接数固定为 1，避免单文件数据库的并发写入锁竞争。生产环境至少应设置：
 
 ```bash
 export APP_ENV=production
 export JWT_SECRET="$(openssl rand -base64 48)"
-export DB_PASSWORD="$(openssl rand -hex 32)"
 make docker-up
 ```
 
-`DB_PASSWORD` 使用十六进制随机值可以直接用于 Compose 和迁移连接串。如果必须使用包含 URL 保留字符的密码，请显式设置 URL 编码后的 `MIGRATION_DATABASE_URL`。不要提交 `.env`、私钥或 `deployments/docker-compose.override.yml`；这些文件已被 Git 忽略。私有部署不依赖 GitHub Actions，仓库中的 CI 工作流已移除。
+SQLite 不使用数据库账号、密码或端口。不要提交 `.env`、私钥、`data/` 或 `deployments/docker-compose.override.yml`；这些文件已被 Git 忽略。私有部署不依赖 GitHub Actions，仓库中的 CI 工作流已移除。
 
 ### VPS + Cloudflare + Caddy
 
-仓库已经提供 Caddy 反向代理配置。Caddy 是唯一对公网暴露的容器：它占用 VPS 的 `80/tcp`、`443/tcp` 和 `443/udp`，API 仅绑定宿主机回环地址，PostgreSQL 仅供 Docker 网络访问。
+仓库已经提供 Caddy 反向代理配置。Caddy 是唯一对公网暴露的容器：它占用 VPS 的 `80/tcp`、`443/tcp` 和 `443/udp`，API 仅绑定宿主机回环地址；SQLite 数据保存在 Docker 命名卷中。
 
 假设 Cloudflare DNS 中的橙云 A 记录为 `dash-rn.elytherivian.top -> <VPS IPv4>`，在 VPS 上执行：
 
@@ -107,20 +99,15 @@ git clone <你的仓库地址> cash-core
 cd cash-core
 cp deployments/.env.production.example .env
 chmod 600 .env
-# 编辑 .env：填写 ACME_EMAIL，并替换 JWT_SECRET 和 DB_PASSWORD。
+# 编辑 .env：填写 ACME_EMAIL，并替换 JWT_SECRET。
 openssl rand -base64 48
-openssl rand -hex 32
 
-# 先启动数据库、执行迁移，再构建 API 与 Caddy。
+# 构建并启动 API 与 Caddy；SQLite 会自动初始化。
 set -a && . ./.env && set +a
-docker compose --env-file .env -f deployments/docker-compose.yml up -d postgres
-docker compose --env-file .env -f deployments/docker-compose.yml run --rm migrate \
-  -path /migrations \
-  -database "postgres://$DB_USER:$DB_PASSWORD@postgres:5432/$DB_NAME?sslmode=disable" up
 docker compose --env-file .env -f deployments/docker-compose.yml --profile app --profile proxy up -d --build
 ```
 
-Cloudflare 的 SSL/TLS 模式应改为 **Full (strict)**。Caddy 会通过 HTTP-01 自动取得受信任的源站证书；Cloudflare 的橙云代理不会阻止该验证。VPS 防火墙或云厂商安全组必须放行 `80/tcp` 与 `443/tcp`；不要公开 `5432` 或 `8080`。首次完成后，用以下命令验证：
+Cloudflare 的 SSL/TLS 模式应改为 **Full (strict)**。Caddy 会通过 HTTP-01 自动取得受信任的源站证书；Cloudflare 的橙云代理不会阻止该验证。VPS 防火墙或云厂商安全组必须放行 `80/tcp` 与 `443/tcp`；不要公开 `8080`。首次完成后，用以下命令验证：
 
 ```bash
 curl -i https://dash-rn.elytherivian.top/health/live
@@ -254,10 +241,8 @@ make test             # 单元测试
 make test-race        # 竞态检测
 make coverage         # 覆盖率报告
 make vet              # 静态检查
-make db-up             # 启动 PostgreSQL
-make migrate-up       # 执行数据库迁移
-make migrate-down     # 回退一个迁移版本
 make docker-up        # 构建并在容器中启动 API
+make docker-down      # 停止 Docker 服务并保留 SQLite 数据卷
 ```
 
 ## 开发新模块

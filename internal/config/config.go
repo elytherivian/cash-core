@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -68,31 +68,20 @@ func (c HTTP) Address() string {
 }
 
 type Database struct {
-	Host            string
-	Port            int
-	Name            string
-	User            string
-	Password        string
-	SSLMode         string
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime time.Duration
-	ConnMaxIdleTime time.Duration
-	ConnectTimeout  time.Duration
+	Path string
 }
 
 func (c Database) DSN() string {
-	u := &url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword(c.User, c.Password),
-		Host:   net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
-		Path:   c.Name,
+	return "file:" + c.Path + "?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000"
+}
+
+// Directory returns the containing directory for a file-backed SQLite database.
+// SQLite's in-memory databases do not need a directory.
+func (c Database) Directory() string {
+	if c.Path == ":memory:" {
+		return ""
 	}
-	query := u.Query()
-	query.Set("sslmode", c.SSLMode)
-	query.Set("connect_timeout", strconv.Itoa(max(1, int(c.ConnectTimeout.Seconds()))))
-	u.RawQuery = query.Encode()
-	return u.String()
+	return filepath.Dir(c.Path)
 }
 
 type Log struct {
@@ -131,9 +120,7 @@ func defaults() Config {
 			AllowedOrigins: []string{"*"},
 		},
 		Database: Database{
-			Host: "localhost", Port: 5432, Name: "cash", User: "cash", Password: "cash",
-			SSLMode: "disable", MaxOpenConns: 20, MaxIdleConns: 5,
-			ConnMaxLifetime: time.Hour, ConnMaxIdleTime: 30 * time.Minute, ConnectTimeout: 5 * time.Second,
+			Path: "data/cash.db",
 		},
 		Log: Log{Level: "info", Format: "json", TimeZone: "Asia/Shanghai"},
 	}
@@ -156,17 +143,7 @@ func applyEnvironment(cfg *Config, loadErrors *[]error) {
 	cfg.HTTP.IdleTimeout = envDuration(loadErrors, "HTTP_IDLE_TIMEOUT", cfg.HTTP.IdleTimeout)
 	cfg.HTTP.ShutdownTimeout = envDuration(loadErrors, "HTTP_SHUTDOWN_TIMEOUT", cfg.HTTP.ShutdownTimeout)
 	cfg.HTTP.AllowedOrigins = envCSV("HTTP_ALLOWED_ORIGINS", cfg.HTTP.AllowedOrigins)
-	cfg.Database.Host = env("DB_HOST", cfg.Database.Host)
-	cfg.Database.Port = envInt(loadErrors, "DB_PORT", cfg.Database.Port)
-	cfg.Database.Name = env("DB_NAME", cfg.Database.Name)
-	cfg.Database.User = env("DB_USER", cfg.Database.User)
-	cfg.Database.Password = env("DB_PASSWORD", cfg.Database.Password)
-	cfg.Database.SSLMode = env("DB_SSLMODE", cfg.Database.SSLMode)
-	cfg.Database.MaxOpenConns = envInt(loadErrors, "DB_MAX_OPEN_CONNS", cfg.Database.MaxOpenConns)
-	cfg.Database.MaxIdleConns = envInt(loadErrors, "DB_MAX_IDLE_CONNS", cfg.Database.MaxIdleConns)
-	cfg.Database.ConnMaxLifetime = envDuration(loadErrors, "DB_CONN_MAX_LIFETIME", cfg.Database.ConnMaxLifetime)
-	cfg.Database.ConnMaxIdleTime = envDuration(loadErrors, "DB_CONN_MAX_IDLE_TIME", cfg.Database.ConnMaxIdleTime)
-	cfg.Database.ConnectTimeout = envDuration(loadErrors, "DB_CONNECT_TIMEOUT", cfg.Database.ConnectTimeout)
+	cfg.Database.Path = env("DB_PATH", cfg.Database.Path)
 	cfg.Log.Level = env("LOG_LEVEL", cfg.Log.Level)
 	cfg.Log.Format = env("LOG_FORMAT", cfg.Log.Format)
 	cfg.Log.TimeZone = env("LOG_TIMEZONE", cfg.Log.TimeZone)
@@ -198,14 +175,8 @@ func (c Config) Validate() error {
 	if c.HTTP.Port < 1 || c.HTTP.Port > 65535 {
 		validationErrors = append(validationErrors, errors.New("HTTP port must be between 1 and 65535"))
 	}
-	if c.Database.Host == "" || c.Database.Name == "" || c.Database.User == "" {
-		validationErrors = append(validationErrors, errors.New("database host, name and user must not be empty"))
-	}
-	if c.Database.Port < 1 || c.Database.Port > 65535 {
-		validationErrors = append(validationErrors, errors.New("database port must be between 1 and 65535"))
-	}
-	if c.Database.MaxIdleConns < 0 || c.Database.MaxOpenConns < 1 || c.Database.MaxIdleConns > c.Database.MaxOpenConns {
-		validationErrors = append(validationErrors, errors.New("database pool sizes are invalid"))
+	if strings.TrimSpace(c.Database.Path) == "" {
+		validationErrors = append(validationErrors, errors.New("database path must not be empty"))
 	}
 	if c.Log.Format != "json" && c.Log.Format != "text" {
 		validationErrors = append(validationErrors, errors.New("log format must be json or text"))
