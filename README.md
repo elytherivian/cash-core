@@ -2,7 +2,7 @@
 
 cash-core 是一个使用 Gin、GORM 和 SQLite 构建的日常记账流水后端。项目按照业务模块纵向组织，每个模块独立拥有 HTTP、业务、数据访问和模型代码，不允许业务模块之间直接依赖。
 
-完整的接口说明、认证方式和调用示例见 [API 文档](docs/API.md)。
+完整的接口说明、认证方式和调用示例见 [API 文档](docs/API.md)，VPS 首次部署、升级和回滚命令见 [部署手册](docs/DEPLOYMENT.md)。
 
 ## 目录结构
 
@@ -28,6 +28,7 @@ cash-core/
 │   └── router/                    # 统一路由和模块依赖组装
 ├── .github/workflows/ci.yml       # 测试、构建并推送 Docker Hub 镜像
 ├── deployments/                   # 生产 Compose、本地开发 override 与 Caddy 站点示例
+├── docs/DEPLOYMENT.md             # VPS 首次部署、更新、备份和回滚
 ├── scripts/deploy.sh              # VPS 拉取镜像并更新服务
 └── test/integration/              # 跨模块 HTTP 集成测试
 ```
@@ -100,12 +101,12 @@ docker network inspect caddy_proxy >/dev/null 2>&1 || docker network create cadd
 make docker-push
 ```
 
-发布时显式传入自己的 Docker Hub 仓库名、标签和目标平台：
+也可以显式传入自己的 Docker Hub 仓库名和目标平台。标签只允许 `dev` 或 `latest`，日常开发应使用默认的 `dev`：
 
 ```bash
 make docker-push \
   IMAGE_REPOSITORY=your-dockerhub-user/cash-core \
-  IMAGE_TAG=v1.2.3 \
+  IMAGE_TAG=dev \
   PLATFORMS=linux/amd64,linux/arm64
 ```
 
@@ -125,14 +126,12 @@ SQLite 适合单机、低并发的 VPS 部署；同一数据库文件不应放�
 本地 codex/dev 开发
   -> 本地测试
   -> push codex/dev
-  -> GitHub CI 测试并发布 :dev / :sha-<commit>
+  -> GitHub CI 测试并发布 :dev
   -> 合并到 main
-  -> GitHub CI 发布 :latest / :sha-<commit>
-  -> 创建 vX.Y.Z Git tag
-  -> GitHub CI 发布 :X.Y.Z / :X.Y / :sha-<commit>
-  -> VPS 更新 APP_IMAGE
+  -> GitHub CI 测试并发布 :latest
+  -> 创建 X.Y.Z Git tag（只标记源码版本，不构建新镜像标签）
   -> 备份 SQLite
-  -> pull + up
+  -> VPS pull :latest + up
 ```
 
 ### 1. 日常开发
@@ -166,39 +165,38 @@ git push origin codex/dev
 
 ```text
 your-dockerhub-user/cash-core:dev
-your-dockerhub-user/cash-core:sha-<短提交号>
 ```
 
-`:dev` 会随每次开发推送移动，适合测试环境；`:sha-<短提交号>` 指向确定提交，适合验证、部署和回滚。
+`:dev` 会随每次开发推送移动，只用于开发或测试环境，不应部署到生产 VPS。
 
 ### 3. 稳定分支与正式版本
 
-开发版本验证完成后，通过 Pull Request 或经过审查的合并把 `codex/dev` 合入 `main`。推送 `main` 后，CI 发布 `:latest` 和对应的 `:sha-<短提交号>`。
+开发版本验证完成后，通过 Pull Request 或经过审查的合并把 `codex/dev` 合入 `main`。推送 `main` 后，CI 只发布 `your-dockerhub-user/cash-core:latest`。
 
 正式发布使用 Git tag，而不是为每个版本创建永久分支：
 
 ```bash
 git switch main
 git pull --ff-only
-git tag v1.2.3
-git push origin v1.2.3
+git tag -a 1.0.0 -m "Release 1.0.0"
+git push origin main
+git push origin 1.0.0
 ```
 
-CI 会发布 `:1.2.3`、`:1.2` 和对应的 `:sha-<短提交号>`。生产环境优先使用 `:1.2.3` 或 `:sha-<短提交号>`；`:latest` 只适合跟随 main，不建议作为长期固定的生产版本。
+Git Tag 只记录源码发布版本，不触发镜像构建，也不会生成 `:1.0.0` 镜像。仓库始终只有两个 CI 管理的 Docker 标签：`codex/dev` 对应 `:dev`，`main` 对应 `:latest`。Docker 标签不能包含 `/`，所以开发镜像使用 `dev`，而不是 `codex/dev`。
 
 ### 4. VPS 更新
 
-VPS 不 clone 完整源码、不安装 Go，也不执行 `docker build`。它只保留 `docker-compose.yml`、生产 `.env`、全局 Caddy site 文件和 SQLite 数据目录。发布时修改生产 `.env` 的 `APP_IMAGE`，备份数据库，再执行 `docker compose pull api` 和 `docker compose up -d api`。详细命令见后面的“版本更新与回滚”。
+VPS 不 clone 完整源码、不安装 Go，也不执行 `docker build`。它只保留 `docker-compose.yml`、生产 `.env`、全局 Caddy site 文件和 SQLite 数据目录。生产 `.env` 固定使用 `APP_IMAGE=your-dockerhub-user/cash-core:latest`；更新时先备份数据库，再执行 `docker compose pull api` 和 `docker compose up -d api`。完整步骤见 [部署手册](docs/DEPLOYMENT.md)。
 
 ### GitHub Actions CI
 
 流水线位于 `.github/workflows/ci.yml`，执行以下流程：
 
 1. Pull Request：运行格式检查、`go vet`、测试和容器构建验证，但不推送镜像。
-2. 推送到 `codex/dev`：测试通过后推送 `dev` 和 `sha-<短提交号>`，供开发环境使用。
-3. 推送到 `main`：测试通过后推送 `latest` 和 `sha-<短提交号>`。
-4. 推送 `v1.2.3` 形式的 Git tag：推送 `1.2.3`、`1.2` 和 `sha-<短提交号>`。
-5. 手动运行 workflow：使用输入的标签发布，默认标签为 `dev`。
+2. 推送到 `codex/dev`：测试通过后只推送 `dev`，供开发环境使用。
+3. 推送到 `main`：测试通过后只推送 `latest`，供生产 VPS 使用。
+4. 推送 Git Tag 不触发流水线，也不生成版本号或 SHA 镜像。
 
 先在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
 
@@ -206,11 +204,11 @@ VPS 不 clone 完整源码、不安装 Go，也不执行 `docker build`。它只
 - Secret `DOCKERHUB_TOKEN`：Docker Hub Access Token，不要使用或提交账号密码。
 - 可选 Variable `DOCKERHUB_IMAGE`：完整镜像仓库名，例如 `your-dockerhub-user/cash-core`；未设置时由 `DOCKERHUB_USERNAME` Secret 自动生成 `<用户名>/cash-core`。流水线不在仓库文件中硬编码真实账号。
 
-发布正式版本的推荐操作：
+源码发布版本使用 Git Tag 标记：
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+git tag -a 1.0.0 -m "Release 1.0.0"
+git push origin 1.0.0
 ```
 
 CI 同时构建 `linux/amd64` 和 `linux/arm64`，因此常见 x86_64、ARM64 VPS 可以使用同一个标签。
@@ -258,14 +256,14 @@ install -d -o 65532 -g 65532 -m 750 /root/cash-core/data
 
 ```dotenv
 APP_ENV=production
-APP_IMAGE=your-dockerhub-user/cash-core:2026-08-12-a1b2c3d
-APP_VERSION=2026-08-12-a1b2c3d
+APP_IMAGE=your-dockerhub-user/cash-core:latest
+APP_VERSION=1.0.0
 JWT_SECRET=<openssl rand -base64 48 生成的值>
 SQLITE_DATA_DIR=/root/cash-core/data
 CADDY_PROXY_NETWORK=caddy_proxy
 ```
 
-完整模板见 `deployments/.env.production.example`。`APP_IMAGE` 必须包含 tag；生产建议使用版本号或 commit sha 等不可变 tag，例如 `your-dockerhub-user/cash-core:2026-08-12-a1b2c3d`，不建议长期只依赖 `latest`。如果 Docker Hub 仓库是私有的，VPS 首次部署前需使用只读 Access Token 执行 `docker login`。
+完整模板见 `deployments/.env.production.example`。当前 CI 只发布 `dev` 和 `latest`，生产必须使用 `latest`，不能使用 `dev`。`APP_VERSION` 仅用于 API 展示，可以填写对应源码 Git Tag。如果 Docker Hub 仓库是私有的，VPS 首次部署前需使用只读 Access Token 执行 `docker login`。
 
 5. 拉取镜像并启动 API。生产 Compose 没有 `build:`，不会在 VPS 编译：
 
@@ -307,18 +305,14 @@ docker compose --env-file /root/cash-core/.env \
 
 ### 版本更新与回滚
 
-更新前先备份 SQLite：
-
-```bash
-cp /root/cash-core/data/cash.db \
-  /root/cash-core/data/cash.db.backup.$(date +%Y%m%d%H%M%S)
-```
-
-然后修改 `/root/cash-core/.env` 中的 `APP_IMAGE` tag 和 `APP_VERSION`，再执行：
+更新前应先记录当前镜像 digest 并备份整个 SQLite 数据目录，再拉取 `latest`：
 
 ```bash
 cd /root/cash-core
 docker compose --env-file .env pull api
+docker compose --env-file .env stop api
+cp -a /root/cash-core/data \
+  /root/cash-core/data.backup.$(date +%Y%m%d%H%M%S)
 docker compose --env-file .env up -d api
 ```
 
@@ -329,7 +323,7 @@ docker compose down -v
 rm -rf /root/cash-core/data
 ```
 
-回滚时将 `.env` 中的 `APP_IMAGE` 和 `APP_VERSION` 改回旧的不可变 tag，再执行 `pull api` 和 `up -d api`。应用启动时会自动幂等初始化当前 schema；所有 schema 变更必须保持向后兼容和幂等。如果未来加入破坏性数据库迁移，发布说明与 README 必须要求先备份，并提供对应的数据及镜像回滚步骤。
+因为 `latest` 是移动标签，镜像回滚必须使用更新前记录的 Docker Hub digest，例如临时把 `APP_IMAGE` 改成 `your-dockerhub-user/cash-core@sha256:<旧摘要>`。数据回滚必须先停止 API，再恢复完整备份目录。详细的记录 digest、备份、升级、验证和回滚命令见 [部署手册](docs/DEPLOYMENT.md)。应用启动时会自动幂等初始化当前 schema；所有 schema 变更必须保持向后兼容和幂等。如果未来加入破坏性数据库迁移，发布文档必须要求先备份，并提供对应的数据及镜像回滚步骤。
 
 SQLite 不使用数据库账号、密码或端口。不要提交 `.env`、Docker Hub Token、私钥或 `data/`；这些路径已被 Git 忽略。
 

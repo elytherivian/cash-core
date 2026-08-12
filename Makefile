@@ -13,7 +13,7 @@ IMAGE_REPOSITORY ?= your-dockerhub-user/cash-core
 IMAGE_TAG ?= dev
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: help run build test test-race coverage fmt vet lint tidy docker-build docker-push docker-up docker-build-up docker-down deploy
+.PHONY: help run build test test-race coverage fmt vet lint tidy check-image-tag docker-build docker-push docker-up docker-build-up docker-down deploy
 
 help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -47,10 +47,13 @@ lint: ## 使用 golangci-lint 检查代码（需要先安装）
 tidy: ## 整理 go.mod 和 go.sum 依赖
 	go mod tidy
 
-docker-build: ## 将当前源码构建为本地 dev 镜像
+check-image-tag:
+	@case "$(IMAGE_TAG)" in dev|latest) ;; *) echo "IMAGE_TAG 只允许 dev 或 latest" >&2; exit 1 ;; esac
+
+docker-build: check-image-tag ## 将当前源码构建为本地 dev/latest 镜像
 	docker build --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) .
 
-docker-push: ## 多架构构建当前源码并推送到 Docker Hub（默认 dev 标签）
+docker-push: check-image-tag ## 多架构构建并推送；只允许 dev/latest（默认 dev）
 	docker buildx build --platform $(PLATFORMS) --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) --push .
 
 docker-up: ## 从 Docker Hub 拉取镜像并启动生产 API
