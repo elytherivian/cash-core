@@ -1,0 +1,10 @@
+services:
+  api:
+    # 本地开发始终使用当前工作区源码构建，不依赖 Docker Hub 中的生产镜像。
+    image: ${LOCAL_IMAGE:-cash-core}:${LOCAL_IMAGE_TAG:-dev}
+    pull_policy: build
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    volumes:
+      - ${LOCAL_SQLITE_DATA_DIR:-../data}:/data

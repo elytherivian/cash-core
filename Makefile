@@ -4,10 +4,16 @@ SHELL := /bin/sh
 APP_NAME := cash
 BIN_DIR := bin
 
-# Docker Compose 文件。
-COMPOSE := docker compose -f deployments/docker-compose.yml
+# Docker Compose 文件。生产命令从 Docker Hub 拉取镜像；开发命令额外叠加源码构建配置。
+COMPOSE := docker compose --env-file .env -f deployments/docker-compose.yml
+DEV_COMPOSE := docker compose -f deployments/docker-compose.yml -f deployments/docker-compose.dev.yml
 
-.PHONY: help run build test test-race coverage fmt vet lint tidy docker-up docker-down
+# Docker Hub 镜像。发布时通过命令行或环境变量设置真实仓库名。
+IMAGE_REPOSITORY ?= your-dockerhub-user/cash-core
+IMAGE_TAG ?= dev
+PLATFORMS ?= linux/amd64,linux/arm64
+
+.PHONY: help run build test test-race coverage fmt vet lint tidy check-image-tag docker-build docker-push docker-up docker-build-up docker-down deploy
 
 help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,8 +47,23 @@ lint: ## 使用 golangci-lint 检查代码（需要先安装）
 tidy: ## 整理 go.mod 和 go.sum 依赖
 	go mod tidy
 
-docker-down: ## 停止 Docker 服务但保留 SQLite 数据卷
+check-image-tag:
+	@case "$(IMAGE_TAG)" in dev|latest) ;; *) echo "IMAGE_TAG 只允许 dev 或 latest" >&2; exit 1 ;; esac
+
+docker-build: check-image-tag ## 将当前源码构建为本地 dev/latest 镜像
+	docker build --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) .
+
+docker-push: check-image-tag ## 多架构构建并推送；只允许 dev/latest（默认 dev）
+	docker buildx build --platform $(PLATFORMS) --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) --push .
+
+docker-up: ## 从 Docker Hub 拉取镜像并启动生产 API
+	$(COMPOSE) pull api
+	$(COMPOSE) up -d api
+
+docker-build-up: ## 使用当前源码构建并启动本地 API
+	APP_IMAGE=$(IMAGE_REPOSITORY):$(IMAGE_TAG) $(DEV_COMPOSE) up -d --build api
+
+docker-down: ## 停止 API；不会删除宿主机 SQLite 数据目录
 	$(COMPOSE) down
 
-docker-up: ## 构建并在容器中启动 API
-	$(COMPOSE) up -d --build api
+deploy: docker-up ## VPS 从 Docker Hub 拉取镜像并更新 API（不在 VPS 构建）

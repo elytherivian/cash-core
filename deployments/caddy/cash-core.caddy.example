@@ -1,4 +1,3 @@
-# 复制到 /root/caddy/sites/api.example.com.caddy 后，将域名替换为实际子域名。
 api.example.com {
-	reverse_proxy cash-core-api:8080
+    reverse_proxy cash-core:8080
 }

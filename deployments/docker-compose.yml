@@ -1,8 +1,7 @@
 services:
   api:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    pull_policy: always
     environment:
       APP_ENV: ${APP_ENV:-local}
       APP_NAME: ${APP_NAME:-cash}
@@ -22,11 +21,11 @@ services:
     expose:
       - "8080"
     volumes:
-      - ${SQLITE_DATA_DIR:-../data}:/data
+      - ${SQLITE_DATA_DIR:-/root/cash-core/data}:/data
     networks:
       caddy_proxy:
         aliases:
-          - cash-core-api
+          - cash-core
     restart: unless-stopped
 
 networks:
