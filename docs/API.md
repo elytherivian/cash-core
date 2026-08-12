@@ -291,6 +291,26 @@ Authorization: Bearer <access_token>
 
 两个查询参数都必填。返回同时符合账户和分类条件的全部有效流水，按 `occurred_at`、`id` 正序排列。
 
+### 修改单条流水
+
+```http
+PATCH /api/v1/transactions/update
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求体必须通过 `id` 指定待修改流水的 UUID，并包含 `type`、`amount`、`account_id`、`category_id`、`occurred_at` 中的一个或多个字段，只修改实际传入的字段。例如：
+
+```json
+{
+  "id": "<transaction_id>",
+  "amount": "25",
+  "occurred_at": "2026-08-01T12:00:00Z"
+}
+```
+
+`occurred_at` 表示流水实际发生时间，可以指定为过去或其他合法时间；服务端仅转换为 UTC 存储，不会强制替换成接口调用时的时间戳。流水必须存在、有效且属于当前用户。成功返回 `200` 及修改后的流水；UUID 非法或请求体没有可修改字段时返回 `400`。
+
 流水查询不分页，供客户端按完整数据计算：
 
 ```text

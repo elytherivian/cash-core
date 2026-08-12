@@ -356,6 +356,7 @@ POST   /api/v1/transactions/create
 GET    /api/v1/transactions/getByAccountID?account_id=<account_id>
 GET    /api/v1/transactions/getByCategoryID?category_id=<category_id>
 GET    /api/v1/transactions/getByAccountIDAndCategoryID?account_id=<account_id>&category_id=<category_id>
+PATCH  /api/v1/transactions/update
 ```
 
 注册、删除、恢复、登录和刷新 token 不要求 JWT。账户、分类和流水接口必须携带：

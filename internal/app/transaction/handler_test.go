@@ -1,7 +1,9 @@
 package transaction
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,12 +17,28 @@ import (
 )
 
 type handlerService struct {
-	listedUserID uuid.UUID
-	listRequest  ListTransactionsRequest
+	updatedUserID      uuid.UUID
+	updatedID          uuid.UUID
+	updateRequest      UpdateTransactionRequest
+	updatedTransaction *Transaction
+	listedUserID       uuid.UUID
+	listRequest        ListTransactionsRequest
 }
 
 func (s *handlerService) CreateTransaction(context.Context, uuid.UUID, CreateTransactionRequest) (*Transaction, error) {
 	return nil, nil
+}
+
+func (s *handlerService) UpdateTransaction(
+	_ context.Context,
+	userID, transactionID uuid.UUID,
+	request UpdateTransactionRequest,
+) (*Transaction, error) {
+	s.updatedUserID = userID
+	s.updatedID = transactionID
+	s.updateRequest = request
+	s.updatedTransaction = &Transaction{ID: transactionID, UserID: userID, Type: Expense}
+	return s.updatedTransaction, nil
 }
 
 func (s *handlerService) ListTransactions(_ context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error) {
@@ -81,5 +99,35 @@ func TestTransactionQueryRoutesUseAuthenticatedUserAndFilters(t *testing.T) {
 				t.Fatalf("user ID = %s, request = %+v", service.listedUserID, service.listRequest)
 			}
 		})
+	}
+}
+
+func TestUpdateTransactionUsesBodyIDAndAuthenticatedUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	userID, transactionID := uuid.New(), uuid.New()
+	service := new(handlerService)
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set(middleware.UserIDKey, userID)
+		c.Next()
+	})
+	engine.PATCH("/api/v1/transactions/update", handler.updateTransaction)
+
+	body, err := json.Marshal(map[string]any{"id": transactionID.String(), "type": "expense"})
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/transactions/update", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if service.updatedUserID != userID || service.updatedID != transactionID ||
+		service.updateRequest.Type == nil || *service.updateRequest.Type != Expense {
+		t.Fatalf("user ID = %s, transaction ID = %s, request = %+v", service.updatedUserID, service.updatedID, service.updateRequest)
 	}
 }

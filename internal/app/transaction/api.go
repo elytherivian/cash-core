@@ -20,10 +20,12 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, lo
 		routes := api.Group("/transactions")
 		routes.Use(middleware.Authentication(verifier, responder))
 
-		// /api/v1/transactions/create
+		// /api/v1/transactions/
 		routes.POST("/create", handler.createTransaction)
 		routes.GET("/getByAccountID", handler.getByAccount)
 		routes.GET("/getByCategoryID", handler.getByCategory)
 		routes.GET("/getByAccountIDAndCategoryID", handler.getByAccountAndCategory)
+
+		routes.PATCH("/update", handler.updateTransaction)
 	}
 }

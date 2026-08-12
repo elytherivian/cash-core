@@ -66,6 +66,33 @@ func (r *CreateTransactionRequest) Normalize() {
 	r.OccurredAt = r.OccurredAt.UTC()
 }
 
+// UpdateTransactionRequest uses pointers to distinguish an omitted field from
+// a field whose zero value was explicitly submitted. PATCH only changes fields
+// present in the request body.
+type UpdateTransactionRequest struct {
+	ID         string           `json:"id"`
+	Type       *TransactionType `json:"type"`
+	Amount     *decimal.Decimal `json:"amount"`
+	AccountID  *uuid.UUID       `json:"account_id"`
+	CategoryID *uuid.UUID       `json:"category_id"`
+	OccurredAt *time.Time       `json:"occurred_at"`
+}
+
+func (r *UpdateTransactionRequest) Normalize() {
+	if r.Type != nil {
+		normalizedType := TransactionType(strings.ToLower(strings.TrimSpace(string(*r.Type))))
+		r.Type = &normalizedType
+	}
+	if r.OccurredAt != nil {
+		occurredAt := r.OccurredAt.UTC()
+		r.OccurredAt = &occurredAt
+	}
+}
+
+func (r UpdateTransactionRequest) HasChanges() bool {
+	return r.Type != nil || r.Amount != nil || r.AccountID != nil || r.CategoryID != nil || r.OccurredAt != nil
+}
+
 type ListTransactionsRequest struct {
 	AccountID  *uuid.UUID
 	CategoryID *uuid.UUID

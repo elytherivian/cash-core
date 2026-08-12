@@ -11,6 +11,10 @@ import (
 
 type serviceRepositoryStub struct {
 	createdTransaction *Transaction
+	updatedTransaction *Transaction
+	updateRequest      UpdateTransactionRequest
+	updatedUserID      uuid.UUID
+	updatedID          uuid.UUID
 	listRequest        ListTransactionsRequest
 	listedUserID       uuid.UUID
 }
@@ -18,6 +22,18 @@ type serviceRepositoryStub struct {
 func (r *serviceRepositoryStub) CreateTransaction(_ context.Context, transaction *Transaction) error {
 	r.createdTransaction = transaction
 	return nil
+}
+
+func (r *serviceRepositoryStub) UpdateTransaction(
+	_ context.Context,
+	userID, transactionID uuid.UUID,
+	request UpdateTransactionRequest,
+) (*Transaction, error) {
+	r.updatedUserID = userID
+	r.updatedID = transactionID
+	r.updateRequest = request
+	r.updatedTransaction = &Transaction{ID: transactionID, UserID: userID}
+	return r.updatedTransaction, nil
 }
 
 func (r *serviceRepositoryStub) ListTransactions(_ context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error) {
@@ -73,3 +89,56 @@ func TestListTransactionsRequiresAtLeastOneFilter(t *testing.T) {
 		t.Fatal("ListTransactions() error = nil, want invalid input")
 	}
 }
+
+func TestUpdateTransactionNormalizesAndPassesOnlyRequestedFields(t *testing.T) {
+	repository := new(serviceRepositoryStub)
+	userID, transactionID := uuid.New(), uuid.New()
+	transactionType := TransactionType(" EXPENSE ")
+	amount := decimal.NewFromInt(25)
+	occurredAt := time.Date(2026, time.August, 10, 20, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+
+	updatedTransaction, err := NewService(repository).UpdateTransaction(context.Background(), userID, transactionID, UpdateTransactionRequest{
+		Type: &transactionType, Amount: &amount, OccurredAt: &occurredAt,
+	})
+	if err != nil {
+		t.Fatalf("UpdateTransaction(): %v", err)
+	}
+	if updatedTransaction != repository.updatedTransaction || repository.updatedUserID != userID || repository.updatedID != transactionID {
+		t.Fatalf("updated transaction = %+v, user ID = %s, transaction ID = %s", updatedTransaction, repository.updatedUserID, repository.updatedID)
+	}
+	if repository.updateRequest.Type == nil || *repository.updateRequest.Type != Expense ||
+		repository.updateRequest.Amount == nil || repository.updateRequest.Amount.Cmp(decimal.NewFromInt(25)) != 0 ||
+		repository.updateRequest.OccurredAt == nil || !repository.updateRequest.OccurredAt.Equal(occurredAt.UTC()) ||
+		repository.updateRequest.OccurredAt.Location() != time.UTC ||
+		repository.updateRequest.AccountID != nil || repository.updateRequest.CategoryID != nil {
+		t.Fatalf("update request = %+v", repository.updateRequest)
+	}
+}
+
+func TestUpdateTransactionRejectsInvalidRequests(t *testing.T) {
+	tests := []struct {
+		name    string
+		request UpdateTransactionRequest
+	}{
+		{name: "empty request", request: UpdateTransactionRequest{}},
+		{name: "invalid type", request: UpdateTransactionRequest{Type: transactionTypePointer("transfer")}},
+		{name: "non-positive amount", request: UpdateTransactionRequest{Amount: decimalPointer(decimal.Zero)}},
+		{name: "empty account ID", request: UpdateTransactionRequest{AccountID: uuidPointer(uuid.Nil)}},
+		{name: "empty category ID", request: UpdateTransactionRequest{CategoryID: uuidPointer(uuid.Nil)}},
+		{name: "zero occurred at", request: UpdateTransactionRequest{OccurredAt: timePointer(time.Time{})}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := NewService(new(serviceRepositoryStub)).UpdateTransaction(
+				context.Background(), uuid.New(), uuid.New(), test.request,
+			); err == nil {
+				t.Fatal("UpdateTransaction() error = nil, want invalid input")
+			}
+		})
+	}
+}
+
+func transactionTypePointer(value TransactionType) *TransactionType { return &value }
+func decimalPointer(value decimal.Decimal) *decimal.Decimal         { return &value }
+func uuidPointer(value uuid.UUID) *uuid.UUID                        { return &value }
+func timePointer(value time.Time) *time.Time                        { return &value }

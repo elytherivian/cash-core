@@ -44,6 +44,29 @@ func (h *Handler) createTransaction(c *gin.Context) {
 	h.responder.Success(c, http.StatusCreated, "transaction created", transaction.Response(h.location))
 }
 
+func (h *Handler) updateTransaction(c *gin.Context) {
+	userID, ok := h.authenticatedUserID(c)
+	if !ok {
+		return
+	}
+	var request UpdateTransactionRequest
+	if err := utils.DecodeJSON(c, &request); err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	transactionID, err := utils.ParseUUID(request.ID)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	updatedTransaction, err := h.service.UpdateTransaction(c.Request.Context(), userID, transactionID, request)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	h.responder.Success(c, http.StatusOK, "transaction updated", updatedTransaction.Response(h.location))
+}
+
 func (h *Handler) getByAccount(c *gin.Context) {
 	h.listTransactions(c, true, false)
 }
