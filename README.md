@@ -27,7 +27,7 @@ cash-core/
 │   │   └── utils/                 # JSON、UUID 等 HTTP 工具
 │   └── router/                    # 统一路由和模块依赖组装
 ├── .github/workflows/ci.yml       # 测试、构建并推送 Docker Hub 镜像
-├── deployments/                   # 生产 Compose 与本地开发 override
+├── deployments/                   # 生产 Compose、本地开发 override 与 Caddy 站点示例
 ├── scripts/deploy.sh              # VPS 拉取镜像并更新服务
 └── test/integration/              # 跨模块 HTTP 集成测试
 ```
@@ -55,6 +55,25 @@ cp .env.example .env
 
 `API_TIMEZONE` 控制 API 响应中时间字段的展示时区（默认 `Asia/Shanghai`，使用 IANA 时区名）。数据库仍统一以 UTC 存储，避免因部署地区改变而影响数据语义。
 
+### 本地 `.env` 与生产 `.env`
+
+项目中有两类 `.env`，文件名相同但用途不同，不能直接混用：
+
+| 对比项 | 本地开发 `.env` | VPS 生产 `.env` |
+| --- | --- | --- |
+| 示例来源 | 根目录 `.env.example` | `deployments/.env.production.example` |
+| 建议位置 | 项目根目录 `.env` | `/root/cash-core/.env` |
+| 使用者 | `make run` 和本地 Go 进程 | Docker Compose 和 API 容器 |
+| 环境 | `APP_ENV=local` | `APP_ENV=production` |
+| SQLite | `DB_PATH=data/cash.db` | `SQLITE_DATA_DIR=/root/cash-core/data`；容器内固定 `DB_PATH=/data/cash.db` |
+| HTTP | 可设置 `HTTP_HOST`、`HTTP_PORT` 和超时参数 | Compose 固定监听容器内 `0.0.0.0:8080`，不 publish 到宿主机 |
+| 镜像与网络 | 不需要 `APP_IMAGE` 或 `CADDY_PROXY_NETWORK` | 必须设置完整 `APP_IMAGE`，并连接 `CADDY_PROXY_NETWORK` |
+| 密钥 | 只能使用本地开发密钥 | `JWT_SECRET` 必须使用独立随机强密钥 |
+
+本地 `.env` 由应用直接读取，重点是 Go 进程、HTTP 超时和本地数据库路径。生产 `.env` 首先由 Docker Compose 用来解析镜像、宿主机挂载目录和外部网络，然后 Compose 把应用所需变量传入容器。生产 Compose 会强制将 `DB_PATH`、`HTTP_HOST` 和 `HTTP_PORT` 设置为容器内的固定值，因此生产 `.env` 不需要重复设置这三个变量。
+
+两份 `.env` 都已被 Git 忽略，不应提交。不要把本地 `.env` 直接复制到 VPS，也不要把生产 `JWT_SECRET` 写回 `.env.example` 或 README。
+
 ## 本地启动
 
 需要安装 Go 1.25。SQLite 文件和 schema 会在应用首次启动时自动创建。
@@ -63,13 +82,17 @@ cp .env.example .env
 make run
 ```
 
-也可以使用容器启动。该命令叠加 `deployments/docker-compose.dev.yml`，始终用当前工作区源码构建本地 `dev` 镜像，不会误用 Docker Hub 中的生产镜像：
+也可以使用容器启动本地源码。开发命令叠加 `deployments/docker-compose.dev.yml`，构建当前工作区代码：
 
 ```bash
-make docker-up
+make docker-build-up
 ```
 
-SQLite 数据文件保存在 Docker 命名卷中。API 默认监听 `http://localhost:8080`，不再运行独立的数据库服务。
+本地 SQLite 默认保存在仓库 `data/cash.db`。Compose 只 `expose` 容器的 `8080`，不会 publish 到宿主机；如需从宿主机直接调试，建议使用 `make run`。容器模式需要提前创建 `caddy_proxy` 网络，或连接已有的本地反向代理：
+
+```bash
+docker network inspect caddy_proxy >/dev/null 2>&1 || docker network create caddy_proxy
+```
 
 本机已经执行过 `docker login` 时，可以直接把当前源码构建为多架构 `dev` 镜像并推送到 Docker Hub：
 
@@ -77,11 +100,11 @@ SQLite 数据文件保存在 Docker 命名卷中。API 默认监听 `http://loca
 make docker-push
 ```
 
-默认推送 `elytherivian/cash-core:dev`，可按需覆盖仓库、标签或平台：
+发布时显式传入自己的 Docker Hub 仓库名、标签和目标平台：
 
 ```bash
 make docker-push \
-  IMAGE_REPOSITORY=elytherivian/cash-core \
+  IMAGE_REPOSITORY=your-dockerhub-user/cash-core \
   IMAGE_TAG=v1.2.3 \
   PLATFORMS=linux/amd64,linux/arm64
 ```
@@ -89,22 +112,83 @@ make docker-push \
 默认 SQLite 配置：
 
 - 本机运行：`data/cash.db`
-- Docker 运行：Docker 命名卷 `sqlite_data` 中的 `/data/cash.db`
+- 本地开发容器：宿主机仓库 `data/` bind mount 到容器 `/data`
+- VPS 生产容器：宿主机 `/root/cash-core/data` bind mount 到容器 `/data`
 
 SQLite 适合单机、低并发的 VPS 部署；同一数据库文件不应放在网络文件系统上，也不应同时由多个 API 容器写入。
 
-## 镜像发布与部署流程
+## 开发、发布与部署流程
 
-现在的构建与部署职责是分离的：
+整个流程将源码开发、镜像构建和生产运行分开：
 
 ```text
-本地开发：源码 -> docker-compose.dev.yml -> 本地 dev 容器
-手动发布：源码 -> make docker-push -> Docker Hub
-CI 发布：GitHub push/tag -> 测试 -> 多架构构建 -> Docker Hub
-VPS 更新：git pull -> scripts/deploy.sh -> docker pull -> 重建容器
+本地 codex/dev 开发
+  -> 本地测试
+  -> push codex/dev
+  -> GitHub CI 测试并发布 :dev / :sha-<commit>
+  -> 合并到 main
+  -> GitHub CI 发布 :latest / :sha-<commit>
+  -> 创建 vX.Y.Z Git tag
+  -> GitHub CI 发布 :X.Y.Z / :X.Y / :sha-<commit>
+  -> VPS 更新 APP_IMAGE
+  -> 备份 SQLite
+  -> pull + up
 ```
 
-VPS 只负责拉取并运行镜像，不安装 Go、不复制源码进镜像，也不执行 `docker build`。SQLite 命名卷、Caddy 数据卷在容器更新后会继续保留。
+### 1. 日常开发
+
+所有日常修改在 `codex/dev` 分支进行：
+
+```bash
+git switch codex/dev
+git pull --ff-only
+cp .env.example .env  # 仅首次需要，之后保留自己的本地配置
+make run
+```
+
+提交前执行：
+
+```bash
+make fmt
+make vet
+make test
+git status --short
+git add <本次修改的文件>
+git commit -m "<变更说明>"
+git push origin codex/dev
+```
+
+如果需要验证本地 Docker 构建，先确保存在 `caddy_proxy` 网络，再运行 `make docker-build-up`。本地源码构建和生产镜像拉取是两个独立命令，避免误把工作区代码当成生产版本。
+
+### 2. 开发镜像
+
+推送 `codex/dev` 后，GitHub Actions 自动执行格式检查、`go vet`、测试和双架构镜像构建。全部通过后发布：
+
+```text
+your-dockerhub-user/cash-core:dev
+your-dockerhub-user/cash-core:sha-<短提交号>
+```
+
+`:dev` 会随每次开发推送移动，适合测试环境；`:sha-<短提交号>` 指向确定提交，适合验证、部署和回滚。
+
+### 3. 稳定分支与正式版本
+
+开发版本验证完成后，通过 Pull Request 或经过审查的合并把 `codex/dev` 合入 `main`。推送 `main` 后，CI 发布 `:latest` 和对应的 `:sha-<短提交号>`。
+
+正式发布使用 Git tag，而不是为每个版本创建永久分支：
+
+```bash
+git switch main
+git pull --ff-only
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+CI 会发布 `:1.2.3`、`:1.2` 和对应的 `:sha-<短提交号>`。生产环境优先使用 `:1.2.3` 或 `:sha-<短提交号>`；`:latest` 只适合跟随 main，不建议作为长期固定的生产版本。
+
+### 4. VPS 更新
+
+VPS 不 clone 完整源码、不安装 Go，也不执行 `docker build`。它只保留 `docker-compose.yml`、生产 `.env`、全局 Caddy site 文件和 SQLite 数据目录。发布时修改生产 `.env` 的 `APP_IMAGE`，备份数据库，再执行 `docker compose pull api` 和 `docker compose up -d api`。详细命令见后面的“版本更新与回滚”。
 
 ### GitHub Actions CI
 
@@ -120,7 +204,7 @@ VPS 只负责拉取并运行镜像，不安装 Go、不复制源码进镜像，�
 
 - Secret `DOCKERHUB_USERNAME`：Docker Hub 用户名。
 - Secret `DOCKERHUB_TOKEN`：Docker Hub Access Token，不要使用或提交账号密码。
-- 可选 Variable `DOCKERHUB_IMAGE`：完整镜像仓库名；未设置时使用 `elytherivian/cash-core`。
+- 可选 Variable `DOCKERHUB_IMAGE`：完整镜像仓库名，例如 `your-dockerhub-user/cash-core`；未设置时由 `DOCKERHUB_USERNAME` Secret 自动生成 `<用户名>/cash-core`。流水线不在仓库文件中硬编码真实账号。
 
 发布正式版本的推荐操作：
 
@@ -131,66 +215,123 @@ git push origin v1.2.3
 
 CI 同时构建 `linux/amd64` 和 `linux/arm64`，因此常见 x86_64、ARM64 VPS 可以使用同一个标签。
 
-## 私有部署
+## VPS 生产部署
 
-Compose 配置可通过环境变量覆盖应用配置，例如 `APP_IMAGE`、`IMAGE_TAG`、`APP_ENV` 与 `JWT_SECRET`。SQLite 连接数固定为 1，避免单文件数据库的并发写入锁竞争。
+生产架构由两套独立 Compose 组成：`/root/caddy` 管理全局 Caddy，cash-core Compose 只管理一个 API 容器。二者通过外部 Docker 网络 `caddy_proxy` 通信。只有全局 Caddy 对宿主机发布 `80/tcp` 和 `443/tcp`；cash-core API 不 publish `8080`，只在 Docker 网络内 `expose 8080`。
 
-生产 Compose 只包含 `image:`，没有 `build:`，并设置了 `pull_policy: always`。默认拉取 `elytherivian/cash-core:latest`；推荐生产环境固定到版本号或提交标签，发布和回滚更可控：
+Caddy 统一通过网络别名 `cash-core:8080` 访问 API。生产环境不配置 `replicas` 或 `scale`，因为多个进程同时写一个 SQLite 文件不适合当前架构。
 
-```bash
-APP_IMAGE=elytherivian/cash-core
-IMAGE_TAG=1.2.3
-APP_VERSION=1.2.3
-```
+### 首次部署
 
-SQLite 不使用数据库账号、密码或端口。不要提交 `.env`、Docker Hub Token、私钥、`data/` 或 `deployments/docker-compose.override.yml`；这些文件已被 Git 忽略。
-
-### VPS + Cloudflare + Caddy
-
-仓库已经提供 Caddy 反向代理配置。Caddy 是唯一对公网暴露的容器：它占用 VPS 的 `80/tcp`、`443/tcp` 和 `443/udp`，API 仅绑定宿主机回环地址；SQLite 数据保存在 Docker 命名卷中。
-
-假设 Cloudflare DNS 中的橙云 A 记录为 `dash-rn.elytherivian.top -> <VPS IPv4>`，在 VPS 上执行：
+1. 启动全局 Caddy。其 Compose 应创建或加入外部网络 `caddy_proxy`，并且只发布 `80/tcp`、`443/tcp`：
 
 ```bash
-git clone <你的仓库地址> cash-core
-cd cash-core
-cp deployments/.env.production.example .env
-chmod 600 .env
-# 编辑 .env：填写 ACME_EMAIL，并替换 JWT_SECRET。
-openssl rand -base64 48
-
-# 拉取 Docker Hub 镜像并启动 API 与 Caddy；VPS 不执行构建。
-make deploy
+cd /root/caddy
+docker compose up -d
+docker network inspect caddy_proxy
 ```
 
-如果 Docker Hub 仓库是私有的，VPS 首次部署前还需执行一次 `docker login`，建议使用只读 Access Token。公开仓库不需要登录。
-
-以后每次发布后的 VPS 更新流程统一为：
+如果 `/root/caddy` 尚未创建该网络，可先执行一次：
 
 ```bash
-cd cash-core
-git pull --ff-only
-# 如果发布了固定版本，先更新 .env 中的 IMAGE_TAG 和 APP_VERSION。
-make deploy
+docker network create caddy_proxy
 ```
 
-`make deploy` 调用 `scripts/deploy.sh`，先执行 `docker compose pull`，再通过 `up -d --no-build --remove-orphans` 替换容器。`--no-build` 会阻止 VPS 意外执行本地构建。部署失败时，原 SQLite 和 Caddy 命名卷不会被删除。
-
-回滚时把 `.env` 中的 `IMAGE_TAG` 与 `APP_VERSION` 改回旧版本，再次执行：
+2. 准备 cash-core 部署目录。VPS 无需完整 Git 仓库：
 
 ```bash
-make deploy
+mkdir -p /root/cash-core
+cd /root/cash-core
 ```
 
-Cloudflare 的 SSL/TLS 模式应改为 **Full (strict)**。Caddy 会通过 HTTP-01 自动取得受信任的源站证书；Cloudflare 的橙云代理不会阻止该验证。VPS 防火墙或云厂商安全组必须放行 `80/tcp` 与 `443/tcp`；不要公开 `8080`。首次完成后，用以下命令验证：
+只需把仓库中的 `deployments/docker-compose.yml` 保存为 `/root/cash-core/docker-compose.yml`，并准备后续的 `.env`；应用源码、Go 工具链、Dockerfile 和构建上下文都不需要放到 VPS。
+
+3. 创建 SQLite 数据目录，并确保镜像内的非 root 用户可以读写：
 
 ```bash
-curl -i https://dash-rn.elytherivian.top/health/live
-curl -i https://dash-rn.elytherivian.top/health/ready
-docker compose --env-file .env -f deployments/docker-compose.yml logs -f caddy api
+install -d -o 65532 -g 65532 -m 750 /root/cash-core/data
 ```
 
-本地 App 的 API 基地址设置为 `https://dash-rn.elytherivian.top`，接口路径保持原样，例如 `https://dash-rn.elytherivian.top/api/v1/auth/login`。桌面端和移动端直接使用 HTTPS，不需要加入端口号，也不需要配置 CORS；若后续增加 Web 前端，再将其完整 HTTPS 域名加入 `HTTP_ALLOWED_ORIGINS`。
+容器内 `/data` bind mount 到宿主机 `/root/cash-core/data`，数据库路径固定为 `/data/cash.db`，对应宿主机文件 `/root/cash-core/data/cash.db`。
+
+4. 创建权限为 `600` 的 `/root/cash-core/.env`，至少包含：
+
+```dotenv
+APP_ENV=production
+APP_IMAGE=your-dockerhub-user/cash-core:2026-08-12-a1b2c3d
+APP_VERSION=2026-08-12-a1b2c3d
+JWT_SECRET=<openssl rand -base64 48 生成的值>
+SQLITE_DATA_DIR=/root/cash-core/data
+CADDY_PROXY_NETWORK=caddy_proxy
+```
+
+完整模板见 `deployments/.env.production.example`。`APP_IMAGE` 必须包含 tag；生产建议使用版本号或 commit sha 等不可变 tag，例如 `your-dockerhub-user/cash-core:2026-08-12-a1b2c3d`，不建议长期只依赖 `latest`。如果 Docker Hub 仓库是私有的，VPS 首次部署前需使用只读 Access Token 执行 `docker login`。
+
+5. 拉取镜像并启动 API。生产 Compose 没有 `build:`，不会在 VPS 编译：
+
+```bash
+cd /root/cash-core
+docker compose --env-file .env pull api
+docker compose --env-file .env up -d api
+```
+
+6. 在全局 Caddy 中配置站点。仓库示例位于 `deployments/caddy/cash-core.caddy.example`；VPS 当前站点文件可使用：
+
+```text
+/root/caddy/sites/api.example.com.caddy
+```
+
+内容为：
+
+```caddyfile
+api.example.com {
+    reverse_proxy cash-core:8080
+}
+```
+
+7. Reload 全局 Caddy：
+
+```bash
+docker compose -f /root/caddy/compose.yaml exec caddy \
+  caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+
+8. 验证公网健康检查，同时确认 API 没有宿主机端口映射：
+
+```bash
+curl -i https://api.example.com/health/live
+curl -i https://api.example.com/health/ready
+docker compose --env-file /root/cash-core/.env \
+  -f /root/cash-core/docker-compose.yml ps
+```
+
+### 版本更新与回滚
+
+更新前先备份 SQLite：
+
+```bash
+cp /root/cash-core/data/cash.db \
+  /root/cash-core/data/cash.db.backup.$(date +%Y%m%d%H%M%S)
+```
+
+然后修改 `/root/cash-core/.env` 中的 `APP_IMAGE` tag 和 `APP_VERSION`，再执行：
+
+```bash
+cd /root/cash-core
+docker compose --env-file .env pull api
+docker compose --env-file .env up -d api
+```
+
+容器删除、镜像更新和重新 `up` 都不会删除 `/root/cash-core/data/cash.db`，因为它位于宿主机 bind mount，而不是 Docker named volume。禁止执行：
+
+```bash
+docker compose down -v
+rm -rf /root/cash-core/data
+```
+
+回滚时将 `.env` 中的 `APP_IMAGE` 和 `APP_VERSION` 改回旧的不可变 tag，再执行 `pull api` 和 `up -d api`。应用启动时会自动幂等初始化当前 schema；所有 schema 变更必须保持向后兼容和幂等。如果未来加入破坏性数据库迁移，发布说明与 README 必须要求先备份，并提供对应的数据及镜像回滚步骤。
+
+SQLite 不使用数据库账号、密码或端口。不要提交 `.env`、Docker Hub Token、私钥或 `data/`；这些路径已被 Git 忽略。
 
 ## API
 
@@ -318,9 +459,10 @@ make coverage         # 覆盖率报告
 make vet              # 静态检查
 make docker-build     # 构建本地镜像，不推送
 make docker-push      # 构建多架构镜像并推送 Docker Hub
-make docker-up        # 用当前源码构建并启动本地 API
-make docker-down      # 停止 Docker 服务并保留 SQLite 数据卷
-make deploy           # VPS 拉取镜像并更新 API 与 Caddy
+make docker-up        # 从 Docker Hub 拉取镜像并启动生产 API
+make docker-build-up  # 用当前源码构建并启动本地 API
+make docker-down      # 停止 API，不删除宿主机 SQLite 数据目录
+make deploy           # VPS 拉取镜像并更新 API
 ```
 
 ## 开发新模块

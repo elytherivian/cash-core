@@ -16,13 +16,9 @@ fi
 docker compose \
     --env-file "$DEPLOY_ENV_FILE" \
     -f deployments/docker-compose.yml \
-    --profile app \
-    --profile proxy \
-    pull
+    pull api
 
 docker compose \
     --env-file "$DEPLOY_ENV_FILE" \
     -f deployments/docker-compose.yml \
-    --profile app \
-    --profile proxy \
-    up -d --no-build --remove-orphans
+    up -d --no-build api

@@ -1,0 +1,3 @@
+api.example.com {
+    reverse_proxy cash-core:8080
+}

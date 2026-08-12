@@ -4,15 +4,16 @@ SHELL := /bin/sh
 APP_NAME := cash
 BIN_DIR := bin
 
-# Docker Compose 文件。
+# Docker Compose 文件。生产命令从 Docker Hub 拉取镜像；开发命令额外叠加源码构建配置。
+COMPOSE := docker compose --env-file .env -f deployments/docker-compose.yml
 DEV_COMPOSE := docker compose -f deployments/docker-compose.yml -f deployments/docker-compose.dev.yml
 
-# Docker Hub 镜像。可在命令行覆盖，例如：make docker-push IMAGE_TAG=v1.2.3
-IMAGE_REPOSITORY ?= elytherivian/cash-core
+# Docker Hub 镜像。发布时通过命令行或环境变量设置真实仓库名。
+IMAGE_REPOSITORY ?= your-dockerhub-user/cash-core
 IMAGE_TAG ?= dev
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: help run build test test-race coverage fmt vet lint tidy docker-build docker-push docker-up docker-down deploy
+.PHONY: help run build test test-race coverage fmt vet lint tidy docker-build docker-push docker-up docker-build-up docker-down deploy
 
 help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -52,11 +53,14 @@ docker-build: ## 将当前源码构建为本地 dev 镜像
 docker-push: ## 多架构构建当前源码并推送到 Docker Hub（默认 dev 标签）
 	docker buildx build --platform $(PLATFORMS) --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) --push .
 
-docker-down: ## 停止本地 Docker 服务但保留 SQLite 数据卷
-	$(DEV_COMPOSE) --profile app down
+docker-up: ## 从 Docker Hub 拉取镜像并启动生产 API
+	$(COMPOSE) pull api
+	$(COMPOSE) up -d api
 
-docker-up: ## 使用当前源码构建并启动本地 API
-	$(DEV_COMPOSE) --profile app up -d --build api
+docker-build-up: ## 使用当前源码构建并启动本地 API
+	APP_IMAGE=$(IMAGE_REPOSITORY):$(IMAGE_TAG) $(DEV_COMPOSE) up -d --build api
 
-deploy: ## VPS 从 Docker Hub 拉取镜像并更新 API 与 Caddy（不在 VPS 构建）
-	sh scripts/deploy.sh
+docker-down: ## 停止 API；不会删除宿主机 SQLite 数据目录
+	$(COMPOSE) down
+
+deploy: docker-up ## VPS 从 Docker Hub 拉取镜像并更新 API（不在 VPS 构建）

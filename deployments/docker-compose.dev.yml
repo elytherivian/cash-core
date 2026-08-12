@@ -6,3 +6,5 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+    volumes:
+      - ${LOCAL_SQLITE_DATA_DIR:-../data}:/data
