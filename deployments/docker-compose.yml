@@ -1,9 +1,8 @@
 services:
   api:
     profiles: ["app"]
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: ${APP_IMAGE:-elytherivian/cash-core}:${IMAGE_TAG:-latest}
+    pull_policy: always
     environment:
       APP_ENV: ${APP_ENV:-local}
       APP_NAME: ${APP_NAME:-cash}

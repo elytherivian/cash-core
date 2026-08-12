@@ -5,9 +5,14 @@ APP_NAME := cash
 BIN_DIR := bin
 
 # Docker Compose 文件。
-COMPOSE := docker compose -f deployments/docker-compose.yml
+DEV_COMPOSE := docker compose -f deployments/docker-compose.yml -f deployments/docker-compose.dev.yml
 
-.PHONY: help run build test test-race coverage fmt vet lint tidy docker-up docker-down
+# Docker Hub 镜像。可在命令行覆盖，例如：make docker-push IMAGE_TAG=v1.2.3
+IMAGE_REPOSITORY ?= elytherivian/cash-core
+IMAGE_TAG ?= dev
+PLATFORMS ?= linux/amd64,linux/arm64
+
+.PHONY: help run build test test-race coverage fmt vet lint tidy docker-build docker-push docker-up docker-down deploy
 
 help: ## 显示全部可用命令及用途
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*?##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,8 +46,17 @@ lint: ## 使用 golangci-lint 检查代码（需要先安装）
 tidy: ## 整理 go.mod 和 go.sum 依赖
 	go mod tidy
 
-docker-down: ## 停止 Docker 服务但保留 SQLite 数据卷
-	$(COMPOSE) down
+docker-build: ## 将当前源码构建为本地 dev 镜像
+	docker build --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) .
 
-docker-up: ## 构建并在容器中启动 API
-	$(COMPOSE) --profile app up -d --build api
+docker-push: ## 多架构构建当前源码并推送到 Docker Hub（默认 dev 标签）
+	docker buildx build --platform $(PLATFORMS) --tag $(IMAGE_REPOSITORY):$(IMAGE_TAG) --push .
+
+docker-down: ## 停止本地 Docker 服务但保留 SQLite 数据卷
+	$(DEV_COMPOSE) --profile app down
+
+docker-up: ## 使用当前源码构建并启动本地 API
+	$(DEV_COMPOSE) --profile app up -d --build api
+
+deploy: ## VPS 从 Docker Hub 拉取镜像并更新 API 与 Caddy（不在 VPS 构建）
+	sh scripts/deploy.sh
