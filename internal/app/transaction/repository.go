@@ -14,6 +14,7 @@ type Repository interface {
 	CreateTransaction(ctx context.Context, transaction *Transaction) error
 	UpdateTransaction(ctx context.Context, userID, transactionID uuid.UUID, request UpdateTransactionRequest) (*Transaction, error)
 	ListTransactions(ctx context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error)
+	ListTransactionsByTimeRange(ctx context.Context, userID uuid.UUID, request ListTransactionsByTimeRangeRequest) ([]Transaction, error)
 }
 
 type repository struct{ db *gorm.DB }
@@ -82,5 +83,19 @@ func (r *repository) ListTransactions(
 
 	transactions := make([]Transaction, 0)
 	err := query.Order("occurred_at ASC, id ASC").Find(&transactions).Error
+	return transactions, database.NormalizeError(err)
+}
+
+func (r *repository) ListTransactionsByTimeRange(
+	ctx context.Context,
+	userID uuid.UUID,
+	request ListTransactionsByTimeRangeRequest,
+) ([]Transaction, error) {
+	transactions := make([]Transaction, 0)
+	err := r.db.WithContext(ctx).Model(&Transaction{}).
+		Where("user_id = ? AND is_active = TRUE", userID).
+		Where("occurred_at >= ? AND occurred_at <= ?", request.StartTimestamp, request.EndTimestamp).
+		Order("occurred_at ASC, id ASC").
+		Find(&transactions).Error
 	return transactions, database.NormalizeError(err)
 }

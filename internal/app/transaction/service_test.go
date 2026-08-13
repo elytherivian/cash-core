@@ -42,6 +42,11 @@ func (r *serviceRepositoryStub) ListTransactions(_ context.Context, userID uuid.
 	return []Transaction{}, nil
 }
 
+func (r *serviceRepositoryStub) ListTransactionsByTimeRange(_ context.Context, userID uuid.UUID, request ListTransactionsByTimeRangeRequest) ([]Transaction, error) {
+	r.listedUserID = userID
+	return []Transaction{}, nil
+}
+
 func TestCreateTransactionStoresAccountAndCategory(t *testing.T) {
 	repository := new(serviceRepositoryStub)
 	accountID := uuid.New()
@@ -87,6 +92,18 @@ func TestCreateTransactionUsesCurrentTimeWhenOccurredAtIsOmitted(t *testing.T) {
 func TestListTransactionsRequiresAtLeastOneFilter(t *testing.T) {
 	if _, err := NewService(new(serviceRepositoryStub)).ListTransactions(context.Background(), uuid.New(), ListTransactionsRequest{}); err == nil {
 		t.Fatal("ListTransactions() error = nil, want invalid input")
+	}
+}
+
+func TestListTransactionsByTimeRangeRejectsInvalidRange(t *testing.T) {
+	service := NewService(new(serviceRepositoryStub))
+	start := time.Date(2026, time.August, 10, 0, 0, 0, 0, time.UTC)
+	end := start.Add(-time.Second)
+	if _, err := service.ListTransactionsByTimeRange(context.Background(), uuid.New(), ListTransactionsByTimeRangeRequest{
+		StartTimestamp: start,
+		EndTimestamp:   end,
+	}); err == nil {
+		t.Fatal("ListTransactionsByTimeRange() error = nil, want invalid input")
 	}
 }
 

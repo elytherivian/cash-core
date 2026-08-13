@@ -23,6 +23,7 @@ type handlerService struct {
 	updatedTransaction *Transaction
 	listedUserID       uuid.UUID
 	listRequest        ListTransactionsRequest
+	timeRangeRequest   ListTransactionsByTimeRangeRequest
 }
 
 func (s *handlerService) CreateTransaction(context.Context, uuid.UUID, CreateTransactionRequest) (*Transaction, error) {
@@ -44,6 +45,12 @@ func (s *handlerService) UpdateTransaction(
 func (s *handlerService) ListTransactions(_ context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error) {
 	s.listedUserID = userID
 	s.listRequest = request
+	return []Transaction{}, nil
+}
+
+func (s *handlerService) ListTransactionsByTimeRange(_ context.Context, userID uuid.UUID, request ListTransactionsByTimeRangeRequest) ([]Transaction, error) {
+	s.listedUserID = userID
+	s.timeRangeRequest = request
 	return []Transaction{}, nil
 }
 
@@ -99,6 +106,57 @@ func TestTransactionQueryRoutesUseAuthenticatedUserAndFilters(t *testing.T) {
 				t.Fatalf("user ID = %s, request = %+v", service.listedUserID, service.listRequest)
 			}
 		})
+	}
+}
+
+func TestGetByDayTimestampUsesAuthenticatedUserAndUTCTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	userID := uuid.New()
+	service := new(handlerService)
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set(middleware.UserIDKey, userID)
+		c.Next()
+	})
+	engine.GET("/api/v1/transactions/getByDayTimestamp", handler.getByDayTimestamp)
+
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/transactions/getByDayTimestamp?start_timestamp=2026-08-09T00:00:00Z&end_timestamp=2026-08-09T23:59:59Z",
+		nil,
+	))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if service.listedUserID != userID ||
+		service.timeRangeRequest.StartTimestamp.Format(time.RFC3339) != "2026-08-09T00:00:00Z" ||
+		service.timeRangeRequest.EndTimestamp.Format(time.RFC3339) != "2026-08-09T23:59:59Z" {
+		t.Fatalf("user ID = %s, time range = %+v", service.listedUserID, service.timeRangeRequest)
+	}
+}
+
+func TestGetByDayTimestampRejectsInvalidTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := new(handlerService)
+	handler := NewHandler(service, common.NewResponder("test"), time.UTC)
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set(middleware.UserIDKey, uuid.New())
+		c.Next()
+	})
+	engine.GET("/api/v1/transactions/getByDayTimestamp", handler.getByDayTimestamp)
+
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/transactions/getByDayTimestamp?start_timestamp=2026-08-10T00:00:00Z&end_timestamp=2026-08-09T00:00:00Z",
+		nil,
+	))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusBadRequest, response.Body.String())
 	}
 }
 

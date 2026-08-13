@@ -22,9 +22,11 @@ func RegisterAPI(engine *gin.Engine, db *gorm.DB, responder common.Responder, lo
 
 		// /api/v1/transactions/
 		routes.POST("/create", handler.createTransaction)
+
 		routes.GET("/getByAccountID", handler.getByAccount)
 		routes.GET("/getByCategoryID", handler.getByCategory)
 		routes.GET("/getByAccountIDAndCategoryID", handler.getByAccountAndCategory)
+		routes.GET("/getByDayTimestamp", handler.getByDayTimestamp)
 
 		routes.PATCH("/update", handler.updateTransaction)
 	}

@@ -97,3 +97,10 @@ type ListTransactionsRequest struct {
 	AccountID  *uuid.UUID
 	CategoryID *uuid.UUID
 }
+
+// ListTransactionsByTimeRangeRequest limits a transaction query to an
+// inclusive UTC time range.
+type ListTransactionsByTimeRangeRequest struct {
+	StartTimestamp time.Time
+	EndTimestamp   time.Time
+}

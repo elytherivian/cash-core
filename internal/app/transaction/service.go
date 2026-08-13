@@ -14,6 +14,7 @@ type Service interface {
 	CreateTransaction(ctx context.Context, userID uuid.UUID, request CreateTransactionRequest) (*Transaction, error)
 	UpdateTransaction(ctx context.Context, userID, transactionID uuid.UUID, request UpdateTransactionRequest) (*Transaction, error)
 	ListTransactions(ctx context.Context, userID uuid.UUID, request ListTransactionsRequest) ([]Transaction, error)
+	ListTransactionsByTimeRange(ctx context.Context, userID uuid.UUID, request ListTransactionsByTimeRangeRequest) ([]Transaction, error)
 }
 
 type service struct{ repository Repository }
@@ -80,4 +81,23 @@ func (s *service) ListTransactions(ctx context.Context, userID uuid.UUID, reques
 		return nil, fmt.Errorf("%w: account_id or category_id is required", common.ErrInvalidInput)
 	}
 	return s.repository.ListTransactions(ctx, userID, request)
+}
+
+func (s *service) ListTransactionsByTimeRange(
+	ctx context.Context,
+	userID uuid.UUID,
+	request ListTransactionsByTimeRangeRequest,
+) ([]Transaction, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("%w: user id is required", common.ErrInvalidInput)
+	}
+	if request.StartTimestamp.IsZero() || request.EndTimestamp.IsZero() {
+		return nil, fmt.Errorf("%w: start_timestamp and end_timestamp are required", common.ErrInvalidInput)
+	}
+	request.StartTimestamp = request.StartTimestamp.UTC()
+	request.EndTimestamp = request.EndTimestamp.UTC()
+	if request.EndTimestamp.Before(request.StartTimestamp) {
+		return nil, fmt.Errorf("%w: end_timestamp must not be before start_timestamp", common.ErrInvalidInput)
+	}
+	return s.repository.ListTransactionsByTimeRange(ctx, userID, request)
 }

@@ -57,3 +57,40 @@ func TestRepositoryUpdateTransactionChangesRequestedFieldsForOwner(t *testing.T)
 		t.Fatalf("other user's UpdateTransaction() error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestRepositoryListTransactionsByTimeRangeReturnsOnlyOwnedActiveMatches(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "transaction.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&Transaction{}); err != nil {
+		t.Fatalf("migrate database: %v", err)
+	}
+
+	userID, otherUserID := uuid.New(), uuid.New()
+	start := time.Date(2026, time.August, 9, 0, 0, 0, 0, time.UTC)
+	matched := Transaction{ID: uuid.New(), UserID: userID, Type: Expense, Amount: decimal.NewFromInt(1), AccountID: uuid.New(), CategoryID: uuid.New(), OccurredAt: start, Lifecycle: common.Lifecycle{IsActive: true}}
+	transactions := []Transaction{
+		matched,
+		{ID: uuid.New(), UserID: userID, Type: Expense, Amount: decimal.NewFromInt(1), AccountID: uuid.New(), CategoryID: uuid.New(), OccurredAt: start.Add(24 * time.Hour), Lifecycle: common.Lifecycle{IsActive: true}},
+		{ID: uuid.New(), UserID: otherUserID, Type: Expense, Amount: decimal.NewFromInt(1), AccountID: uuid.New(), CategoryID: uuid.New(), OccurredAt: start.Add(time.Hour), Lifecycle: common.Lifecycle{IsActive: true}},
+		{ID: uuid.New(), UserID: userID, Type: Expense, Amount: decimal.NewFromInt(1), AccountID: uuid.New(), CategoryID: uuid.New(), OccurredAt: start.Add(time.Hour), Lifecycle: common.Lifecycle{IsActive: false}},
+	}
+	if err := db.Create(&transactions).Error; err != nil {
+		t.Fatalf("create transactions: %v", err)
+	}
+	if err := db.Model(&Transaction{}).Where("id = ?", transactions[3].ID).Update("is_active", false).Error; err != nil {
+		t.Fatalf("deactivate transaction: %v", err)
+	}
+
+	listed, err := NewRepository(db).ListTransactionsByTimeRange(context.Background(), userID, ListTransactionsByTimeRangeRequest{
+		StartTimestamp: start,
+		EndTimestamp:   start.Add(24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("ListTransactionsByTimeRange(): %v", err)
+	}
+	if len(listed) != 2 || listed[0].ID != matched.ID || !listed[1].OccurredAt.Equal(start.Add(24*time.Hour)) {
+		t.Fatalf("listed transactions = %+v", listed)
+	}
+}

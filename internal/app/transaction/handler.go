@@ -79,6 +79,28 @@ func (h *Handler) getByAccountAndCategory(c *gin.Context) {
 	h.listTransactions(c, true, true)
 }
 
+func (h *Handler) getByDayTimestamp(c *gin.Context) {
+	userID, ok := h.authenticatedUserID(c)
+	if !ok {
+		return
+	}
+	request, err := parseTimeRangeTransactionsRequest(c)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	transactions, err := h.service.ListTransactionsByTimeRange(c.Request.Context(), userID, request)
+	if err != nil {
+		h.responder.Error(c, err)
+		return
+	}
+	responses := make([]TransactionResponse, 0, len(transactions))
+	for _, transaction := range transactions {
+		responses = append(responses, transaction.Response(h.location))
+	}
+	h.responder.Success(c, http.StatusOK, "transactions listed", responses)
+}
+
 func (h *Handler) listTransactions(c *gin.Context, requireAccountID, requireCategoryID bool) {
 	userID, ok := h.authenticatedUserID(c)
 	if !ok {
@@ -126,6 +148,36 @@ func parseRequiredQueryUUID(c *gin.Context, queryName string) (uuid.UUID, error)
 		return uuid.Nil, fmt.Errorf("%w: %s is required", common.ErrInvalidInput, queryName)
 	}
 	return utils.ParseUUID(value)
+}
+
+func parseTimeRangeTransactionsRequest(c *gin.Context) (ListTransactionsByTimeRangeRequest, error) {
+	startTimestamp, err := parseRequiredUTCTimestamp(c, "start_timestamp")
+	if err != nil {
+		return ListTransactionsByTimeRangeRequest{}, err
+	}
+	endTimestamp, err := parseRequiredUTCTimestamp(c, "end_timestamp")
+	if err != nil {
+		return ListTransactionsByTimeRangeRequest{}, err
+	}
+	if endTimestamp.Before(startTimestamp) {
+		return ListTransactionsByTimeRangeRequest{}, fmt.Errorf("%w: end_timestamp must not be before start_timestamp", common.ErrInvalidInput)
+	}
+	return ListTransactionsByTimeRangeRequest{
+		StartTimestamp: startTimestamp,
+		EndTimestamp:   endTimestamp,
+	}, nil
+}
+
+func parseRequiredUTCTimestamp(c *gin.Context, queryName string) (time.Time, error) {
+	value := c.Query(queryName)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("%w: %s is required", common.ErrInvalidInput, queryName)
+	}
+	timestamp, err := time.Parse(time.RFC3339, value)
+	if err != nil || timestamp.IsZero() {
+		return time.Time{}, fmt.Errorf("%w: %s must be an RFC3339 UTC timestamp", common.ErrInvalidInput, queryName)
+	}
+	return timestamp.UTC(), nil
 }
 
 func (h *Handler) authenticatedUserID(c *gin.Context) (uuid.UUID, bool) {
